@@ -1,0 +1,19 @@
+[project]
+name = "fast-suisho"
+version = "0.1.0"
+description = "Acceleration experiments for the Suisho 11 shogi NNUE evaluation network"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.15.0",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
