@@ -1,0 +1,254 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bats:*)",
+      "Bash(gh api:*)",
+      "Bash(gh issue:*)",
+      "Bash(gh label:*)",
+      "Bash(gh pr:*)",
+      "Bash(gh run:*)",
+      "Bash(git add:*)",
+      "Bash(git branch:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(git config:*)",
+      "Bash(git commit:*)",
+      "Bash(git mv:*)",
+      "Bash(git pull:*)",
+      "Bash(git push:*)",
+      "Bash(node:*)",
+      "Bash(python3 scripts/extract_api.py:*)",
+      "Bash(uv run:*)",
+      "Skill(create-pr)",
+      "Skill(daily-report)",
+      "Skill(finish-task)",
+      "Skill(lock-settings)",
+      "Skill(morning-checklist)",
+      "Skill(report-doc-conflict)",
+      "Skill(report-hook-block)",
+      "Skill(run-codex-review)",
+      "Skill(start-dev)",
+      "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:docs.cloud.google.com)",
+      "WebFetch(domain:github.com)"
+    ],
+    "deny": [
+      "Edit(.claude/settings.json)",
+      "Write(.claude/settings.json)",
+      "Edit(.claude/settings.local.json)",
+      "Write(.claude/settings.local.json)",
+      "Edit(.claude/hooks/block-add-all.sh)",
+      "Write(.claude/hooks/block-add-all.sh)",
+      "Edit(.claude/hooks/block-dangerous-git.sh)",
+      "Write(.claude/hooks/block-dangerous-git.sh)",
+      "Edit(.claude/hooks/block-no-verify.sh)",
+      "Write(.claude/hooks/block-no-verify.sh)",
+      "Edit(.claude/hooks/command-allowlist.sh)",
+      "Write(.claude/hooks/command-allowlist.sh)",
+      "Edit(.claude/hooks/lib/shell-parse.sh)",
+      "Write(.claude/hooks/lib/shell-parse.sh)",
+      "Edit(.claude/hooks/log-tool-call.sh)",
+      "Write(.claude/hooks/log-tool-call.sh)",
+      "Edit(.claude/hooks/log-permission-denied.sh)",
+      "Write(.claude/hooks/log-permission-denied.sh)",
+      "Edit(.claude/hooks/prevent-secret-commit.sh)",
+      "Write(.claude/hooks/prevent-secret-commit.sh)",
+      "Edit(.claude/hooks/python-lint.sh)",
+      "Write(.claude/hooks/python-lint.sh)",
+      "Edit(.githooks/pre-commit)",
+      "Write(.githooks/pre-commit)",
+      "Edit(.github/workflows/claude-code-review.yml)",
+      "Write(.github/workflows/claude-code-review.yml)",
+      "Edit(.github/workflows/claude.yml)",
+      "Write(.github/workflows/claude.yml)",
+      "Edit(.github/workflows/hook-tests.yml)",
+      "Write(.github/workflows/hook-tests.yml)",
+      "Edit(.github/workflows/lint.yml)",
+      "Write(.github/workflows/lint.yml)",
+      "Edit(.github/workflows/test.yml)",
+      "Write(.github/workflows/test.yml)",
+      "Edit(scripts/extract_api.py)",
+      "Write(scripts/extract_api.py)",
+      "Edit(scripts/install-hooks.sh)",
+      "Write(scripts/install-hooks.sh)",
+      "Edit(tests/hooks/block_add_all.bats)",
+      "Write(tests/hooks/block_add_all.bats)",
+      "Edit(tests/hooks/block_dangerous_git.bats)",
+      "Write(tests/hooks/block_dangerous_git.bats)",
+      "Edit(tests/hooks/block_no_verify.bats)",
+      "Write(tests/hooks/block_no_verify.bats)",
+      "Edit(tests/hooks/command_allowlist.bats)",
+      "Write(tests/hooks/command_allowlist.bats)",
+      "Edit(tests/hooks/helpers/setup.bash)",
+      "Write(tests/hooks/helpers/setup.bash)",
+      "Edit(tests/hooks/pre_commit.bats)",
+      "Write(tests/hooks/pre_commit.bats)",
+      "Edit(tests/hooks/prevent_secret_commit.bats)",
+      "Write(tests/hooks/prevent_secret_commit.bats)",
+      "Edit(tests/hooks/python_lint.bats)",
+      "Write(tests/hooks/python_lint.bats)",
+      "Edit(tests/hooks/settings_allowlist_sync.bats)",
+      "Write(tests/hooks/settings_allowlist_sync.bats)",
+      "Read(~/.config/gcloud/**)",
+      "Read(~/.aws/**)",
+      "Read(~/.kube/**)",
+      "Read(~/.netrc)",
+      "Read(~/.docker/config.json)",
+      "Read(~/.pypirc)",
+      "Read(~/.npmrc)",
+      "Read(~/.gem/credentials)",
+      "Read(~/.bash_history)",
+      "Read(~/.zsh_history)",
+      "Read(~/.config/google-chrome/**)",
+      "Read(~/.mozilla/firefox/**)",
+      "Read(~/.terraform.d/**)",
+      "Read(.env)",
+      "Read(credentials.json)",
+      "Bash(sudo:*)",
+      "Bash(su:*)",
+      "Bash(curl *|*sh*)",
+      "Bash(wget *|*sh*)",
+      "Bash(ssh:*)",
+      "Bash(scp:*)",
+      "Bash(rsync:*)",
+      "Bash(npm publish:*)",
+      "Bash(yarn publish:*)",
+      "Bash(pnpm publish:*)",
+      "Bash(open:*)",
+      "Bash(osascript:*)",
+      "Bash(defaults write:*)",
+      "Bash(terraform apply:*)",
+      "Bash(terraform destroy:*)",
+      "Bash(kubectl apply:*)",
+      "Bash(kubectl delete:*)",
+      "Bash(helm install:*)",
+      "Bash(helm upgrade:*)",
+      "Bash(docker push:*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/python-lint.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Edit|Write|WebFetch|Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/log-tool-call.sh"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/prevent-secret-commit.sh"
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/block-no-verify.sh"
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/block-add-all.sh"
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/block-dangerous-git.sh"
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/command-allowlist.sh"
+          }
+        ]
+      }
+    ],
+    "PermissionDenied": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/log-permission-denied.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "codex@openai-codex": true,
+    "skill-creator@claude-plugins-official": true
+  },
+  "sandbox": {
+    "enabled": true,
+    "allowUnsandboxedCommands": false,
+    "filesystem": {
+      "allowWrite": [
+        "~/.claude/plugins/data/codex-openai-codex/**",
+        "~/.codex/models_cache.json",
+        "~/.codex/tmp/**",
+        "~/.codex/log/**",
+        "~/.codex/logs_*.sqlite*"
+      ],
+      "denyWrite": [
+        "./.claude/settings.json",
+        "./.claude/settings.local.json",
+        "./.claude/hooks/block-add-all.sh",
+        "./.claude/hooks/block-dangerous-git.sh",
+        "./.claude/hooks/block-no-verify.sh",
+        "./.claude/hooks/command-allowlist.sh",
+        "./.claude/hooks/lib/shell-parse.sh",
+        "./.claude/hooks/log-tool-call.sh",
+        "./.claude/hooks/log-permission-denied.sh",
+        "./.claude/hooks/prevent-secret-commit.sh",
+        "./.claude/hooks/python-lint.sh",
+        "./.githooks/pre-commit",
+        "./.github/workflows/claude-code-review.yml",
+        "./.github/workflows/claude.yml",
+        "./.github/workflows/hook-tests.yml",
+        "./.github/workflows/lint.yml",
+        "./.github/workflows/test.yml",
+        "./scripts/extract_api.py",
+        "./scripts/install-hooks.sh",
+        "./tests/hooks/block_add_all.bats",
+        "./tests/hooks/block_dangerous_git.bats",
+        "./tests/hooks/block_no_verify.bats",
+        "./tests/hooks/command_allowlist.bats",
+        "./tests/hooks/helpers/setup.bash",
+        "./tests/hooks/pre_commit.bats",
+        "./tests/hooks/prevent_secret_commit.bats",
+        "./tests/hooks/python_lint.bats",
+        "./tests/hooks/settings_allowlist_sync.bats"
+      ],
+      "denyRead": [
+        "~/.aws",
+        "~/.kube",
+        "~/.netrc",
+        "~/.docker/config.json",
+        "~/.pypirc",
+        "~/.npmrc",
+        "~/.gem/credentials",
+        "~/.bash_history",
+        "~/.zsh_history",
+        "~/.config/google-chrome",
+        "~/.mozilla/firefox",
+        "~/.terraform.d",
+        "./.env",
+        "./**/.env.*",
+        "./**/*.pem",
+        "./**/*.key",
+        "./credentials.json",
+        "./**/service-account*.json"
+      ]
+    }
+  }
+}

@@ -1,0 +1,74 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+    # Optional: Only run on specific file changes
+    # paths:
+    #   - "src/**/*.ts"
+    #   - "src/**/*.tsx"
+    #   - "src/**/*.js"
+    #   - "src/**/*.jsx"
+
+jobs:
+  claude-review:
+    # Optional: Filter by PR author
+    # if: |
+    #   github.event.pull_request.user.login == 'external-contributor' ||
+    #   github.event.pull_request.user.login == 'new-developer' ||
+    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code Review
+        id: claude-review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
+          plugins: 'code-review@claude-code-plugins'
+          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
+          claude_args: |
+            --append-system-prompt "This project maintains paired English and Japanese documentation files (e.g., README.md and README.ja.md). When reviewing this PR: (1) If any such paired file was modified, check whether its counterpart was also updated. Flag it if not. (2) If both files were updated, read both versions carefully and verify that the Japanese translation accurately reflects the meaning and nuance of the English, and vice versa. Point out any mistranslations, omissions, or tone inconsistencies."
+          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
+          # or https://code.claude.com/docs/en/cli-reference for available options
+
+      - name: Notify Discord
+        if: always()
+        env:
+          WEBHOOK_URL: ${{ secrets.DISCORD_REVIEW_WEBHOOK_URL }}
+          REVIEW_OUTCOME: ${{ steps.claude-review.outcome }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "${WEBHOOK_URL:-}" ]; then
+            echo "DISCORD_REVIEW_WEBHOOK_URL secret is not set; skipping Discord notification." >&2
+            exit 0
+          fi
+          if [ "$REVIEW_OUTCOME" = "success" ]; then
+            CONTENT="✅ Finished: Claude Code Review"$'\n'"<@462958750865817618> レビュー終わったよ〜！見てみて！ ${PR_URL}"
+          else
+            CONTENT="❌ Failed: Claude Code Review"$'\n'"<@462958750865817618> あれ〜、なんかコケちゃった...ログ見てくれる？ ${RUN_URL}"
+          fi
+          PAYLOAD=$(jq -nc \
+            --arg content "$CONTENT" \
+            '{content: $content, allowed_mentions: {users: ["462958750865817618"]}}')
+          if ! curl -fsS -X POST \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
+            "$WEBHOOK_URL"; then
+            echo "Discord notification POST failed; continuing." >&2
+            exit 0
+          fi

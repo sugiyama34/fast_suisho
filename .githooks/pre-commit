@@ -1,0 +1,110 @@
+#!/bin/bash
+# Git pre-commit hook: scan staged diff contents for secret patterns.
+# Activated via: git config core.hooksPath .githooks
+# Or run: scripts/install-hooks.sh
+
+set -euo pipefail
+
+# Patterns that suggest secrets in file contents (applied to added lines only)
+SECRET_PATTERNS=(
+  # Test-only pattern (used by bats tests to verify the mechanism without fake credentials)
+  'BATS_TEST_SECRET'
+
+  # API keys with known prefixes
+  'sk-[a-zA-Z0-9]{20,}'
+  'sk-proj-[a-zA-Z0-9]+'
+  'sk-ant-[a-zA-Z0-9]+'
+  'AIza[0-9A-Za-z\-_]{35}'
+  'ghp_[a-zA-Z0-9]{36}'
+  'gho_[a-zA-Z0-9]{36}'
+  'glpat-[a-zA-Z0-9\-_]{20,}'
+
+  # Generic secret assignments
+  'API_KEY\s*=\s*["'"'"'][^"'"'"']{8,}'
+  'SECRET_KEY\s*=\s*["'"'"'][^"'"'"']{8,}'
+  'PASSWORD\s*=\s*["'"'"'][^"'"'"']{8,}'
+  'PRIVATE_KEY\s*=\s*["'"'"']'
+  'TOKEN\s*=\s*["'"'"'][^"'"'"']{8,}'
+
+  # PEM private key markers
+  '-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----'
+)
+
+# Combine into a single alternation so we run one grep per added line
+# instead of one grep per (line × pattern). With the current 14 patterns,
+# this cuts subprocess spawns by 14× on uv.lock-sized diffs.
+COMBINED_PATTERN=$(IFS='|'; echo "${SECRET_PATTERNS[*]}")
+
+# Files to skip (these legitimately contain pattern-like strings)
+SKIP_FILES=(
+  '.githooks/pre-commit'
+  '.claude/hooks/'
+  'tests/hooks/'
+)
+
+# Get staged files (added, copied, modified, renamed)
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR)
+
+if [ -z "$STAGED_FILES" ]; then
+  exit 0
+fi
+
+FOUND=false
+
+while IFS= read -r file; do
+  # Skip files that legitimately contain secret-like patterns
+  SKIP=false
+  for skip in "${SKIP_FILES[@]}"; do
+    if [[ "$file" == "$skip"* ]]; then
+      SKIP=true
+      break
+    fi
+  done
+  if [ "$SKIP" = true ]; then
+    continue
+  fi
+
+  # Get added lines with line numbers for this file
+  # Format: @@ -old,count +new,count @@ followed by +lines
+  DIFF_OUTPUT=$(git diff --cached --no-color -U0 -- "$file")
+
+  if [ -z "$DIFF_OUTPUT" ]; then
+    continue
+  fi
+
+  # Extract added lines with their line numbers
+  LINE_NUM=0
+  while IFS= read -r diff_line; do
+    # Parse hunk headers to track line numbers
+    if [[ "$diff_line" =~ ^@@.*\+([0-9]+) ]]; then
+      LINE_NUM=${BASH_REMATCH[1]}
+      continue
+    fi
+    # Check added lines (starting with +, but not +++)
+    if [[ "$diff_line" =~ ^\+[^+] ]]; then
+      CONTENT="${diff_line:1}"  # Remove leading +
+      if echo "$CONTENT" | grep -qE -e "$COMBINED_PATTERN"; then
+        if [ "$FOUND" = false ]; then
+          echo "ERROR: Potential secrets detected in staged changes:" >&2
+          echo "" >&2
+          FOUND=true
+        fi
+        echo "  $file:$LINE_NUM" >&2
+        echo "    $CONTENT" >&2
+        echo "" >&2
+      fi
+      LINE_NUM=$((LINE_NUM + 1))
+    elif [[ ! "$diff_line" =~ ^- ]]; then
+      # Context lines (shouldn't appear with -U0, but just in case)
+      LINE_NUM=$((LINE_NUM + 1))
+    fi
+  done <<< "$DIFF_OUTPUT"
+done <<< "$STAGED_FILES"
+
+if [ "$FOUND" = true ]; then
+  echo "Commit rejected. Please review the flagged lines above." >&2
+  echo "If these are false positives, ask a team member to review and commit with --no-verify." >&2
+  exit 1
+fi
+
+exit 0
