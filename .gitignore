@@ -1,0 +1,19 @@
+# NNUE binaries are large; keep them out of git
+*.bin
+networks/**/*.bin
+
+# engine binaries
+engines/
+*.o
+*.exe
+YaneuraOu-by-gcc*
+
+# python
+__pycache__/
+*.pyc
+.venv/
+
+# experiment artifacts
+experiments/**/games/
+experiments/**/*.kif
+experiments/**/*.csa
