@@ -6,7 +6,10 @@
 
 - やねうら王 V9.60 (commit `9133c527`) を `YANEURAOU_ENGINE_SFNN_halfka2_1024-7-64-k3k3`
   edition でビルドし、Suisho 11 `nn.bin` の読み込み・探索を確認した
-- 初期局面 3 秒探索: depth 23, **約 610 kNPS (1スレッド)**, bestmove 2g2f (cp +103)
+- 初期局面 3 秒探索 (アドホック単発計測): depth 23, 約 600 kNPS (1スレッド, ログ値 nps 600373),
+  bestmove 2g2f。cp 103 は upperbound (fail 境界値) であり確定評価値ではない
+- 正式な NPS ベースラインは固定局面集 / bench で別途計測する (下記 TODO)。
+  この単発値を高速化の比較基準にしないこと
 
 ## ビルドコマンド
 
@@ -27,7 +30,13 @@ make -j16 normal YANEURAOU_EDITION=YANEURAOU_ENGINE_SFNN_halfka2_1024-7-64-k3k3 
    (hash 0x5f134cb9 系)、V9.60 は `HalfKA2` (0x5f234cb9) に改名済み。
    次元数 (131949→1024x2) と index 割当は同一で、評価値も正常。
    警告 (`NNUE hash mismatch: expected 1008745266 got 1008746012`) は無視してよい。
-   自作 serializer で書き出す際は元ファイルの hash をそのまま保持すれば警告も消える。
+   警告の原因はファイル内 hash (0x3c203e1c) とエンジン側定数 (0x3c203b32,
+   `evaluate_nnue.h`) の不一致。自作 serializer では元ファイルの hash を保持すると
+   バイト一致は保てるが警告は残る (無害)。エンジン期待値の hash を書けば警告は
+   消えるが、元ファイルとのバイト一致は失われる。どちらかを選ぶこと。
+   なお現行 V9.60 ソースで hash `0x5f134cb9` は旧 HalfKA ではなく **HalfKA1**
+   (138510 次元、index 割当が異なる別 feature) を指すため、hash 値から現行ソースの
+   feature class を逆引きしないこと。
 2. **USI 操作時は stdin を閉じない**: `go` 直後に EOF を送ると探索が即中断され
    nodes 0 の bestmove が返る。ハーネスは対話的にパイプを維持すること。
 3. 定跡 `book/standard_book.db` は未配置。対局時は `USI_OwnBook false` にするか

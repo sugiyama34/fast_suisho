@@ -1,19 +1,17 @@
-# NNUE binaries are large; keep them out of git
-*.bin
+# NNUE network binaries (large)。tools/ 配下のテスト用 fixture は対象外
 networks/**/*.bin
+experiments/**/*.bin
 
-# engine binaries
-engines/
+# built engine binaries (バイナリ専用ディレクトリ。設定類は match/ に置く)
+/engines/
+YaneuraOu-by-gcc*
 *.o
 *.exe
-YaneuraOu-by-gcc*
 
 # python
 __pycache__/
 *.pyc
 .venv/
 
-# experiment artifacts
+# generated game records (対局で生成されるもの。互角局面集など curated な入力は games/ の外に置く)
 experiments/**/games/
-experiments/**/*.kif
-experiments/**/*.csa

@@ -12,8 +12,12 @@
 
 `tools/` に Python (numpy) で nn.bin の parser / serializer を実装:
 
-- ファイル形式: version + hash + architecture 文字列 + FeatureTransformer (int16 weights/biases) + LayerStacks×9 の各層 (int8 weights / int32 biases)
+- ファイル形式: version + hash + architecture 文字列 + FeatureTransformer + LayerStacks×9 の各層 (int8 weights / int32 biases)
+- **FeatureTransformer 部は LEB128 圧縮**: `COMPRESSED_LEB128` マジックを nn.bin の
+  offset 235 / 1284 で確認済み (YaneuraOu `nnue_common.h` の `read_leb_128` 参照)。
+  展開後が int16 weights/biases。ファイルが 135 MB (生 int16 なら約 270 MB) なのはこのため
 - 往復変換 (parse → serialize) でバイト一致することを確認するテストを書く
+  (LEB128 を bit-exact に再エンコードする必要がある点に注意)
 - 重み分布の統計 (ゼロ近傍割合、チャネルごとの L1 ノルム等) を可視化
 
 ## フェーズ 2: 高速化実験 (候補)
