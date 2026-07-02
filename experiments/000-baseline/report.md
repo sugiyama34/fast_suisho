@@ -11,6 +11,18 @@
 - 正式な NPS ベースラインは固定局面集 / bench で別途計測する (下記 TODO)。
   この単発値を高速化の比較基準にしないこと
 
+## 参照アーティファクトの fingerprint
+
+以降の全実験はこの 2 つを基準物とする。実験前に sha256 が一致することを確認すること
+(nn.bin はリポジトリ外・root 所有の可変ファイルであり、git では追跡されない):
+
+```
+a78b7f889843037d344f482623b3febd124ead5c1f34f134d9f1c2c78cd0f829  ../suisho11/nn.bin
+312b1368348e83fe546f45983e49bd354636609b1ad4857a033c4ab0e4aafff6  ../YaneuraOu/source/YaneuraOu-by-gcc
+```
+
+※ 報告中の hash 0x3c203e1c はアーキテクチャ hash であり、重みの fingerprint ではない。
+
 ## ビルドコマンド
 
 ```sh
