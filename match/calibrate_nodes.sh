@@ -7,7 +7,7 @@
 set -euo pipefail
 ENGINE=${ENGINE:-/home/sugiyama/YaneuraOu/source/YaneuraOu-by-gcc}
 EVALDIR=${EVALDIR:-/home/sugiyama/suisho11}
-BOOK=${BOOK:-"$(dirname "$0")/books/start_sfens_ply24.txt"}
+BOOK=${BOOK:-"$(dirname "$0")/../data/books/start_sfens_ply24.txt"}
 MOVETIME=${1:-240}
 THREADS=${2:-16}
 NPOS=${3:-10}

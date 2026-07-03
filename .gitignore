@@ -1,3 +1,6 @@
+# 大きなデータファイル置き場 (開始局面集など)。取得は match/fetch_books.sh 参照
+/data/
+
 # NNUE network binaries (large)。tools/ 配下のテスト用 fixture は対象外
 networks/**/*.bin
 experiments/**/*.bin
