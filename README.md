@@ -42,5 +42,5 @@ fast_suisho/
 ```sh
 cd ../YaneuraOu/source
 make -j16 normal YANEURAOU_EDITION=YANEURAOU_ENGINE_SFNN_halfka2_1024-7-64-k3k3 \
-     COMPILER=g++ TARGET_CPU=AVX2
+     COMPILER=g++ TARGET_CPU=AVX2 PYTHON=python3
 ```
