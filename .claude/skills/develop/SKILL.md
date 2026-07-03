@@ -46,18 +46,16 @@ No regex-based sanitizer is mandated — paraphrasing is done by the orchestrato
 ### Phase 2.A — Spec-bearing path (default)
 
 1. **Resolve target paths.** Read the planning doc's task list to determine the impl module path(s). A feature may touch multiple impl files — collect all. Pick test paths by mirroring each under `tests/`:
-   - `bot/cogs/foo.py` → `tests/bot/cogs/test_foo.py`
-   - `bot/services/foo_service.py` → `tests/bot/services/test_foo_service.py`
+   - `tools/foo.py` → `tests/tools/test_foo.py`
    - `scripts/foo.py` → `tests/scripts/test_foo.py`
-   - `.claude/hooks/foo.sh` or `.githooks/foo` → `tests/hooks/test_foo.bats`
 
    For multi-file features, a **single spec covers the whole unit** and a **single test-writer invocation** generates tests across all target test paths.
 
-2. **Extract the API manifest (Python targets only).** Run:
+2. **Extract the API manifest.** Run:
    ```bash
    uv run python scripts/extract_api.py <target-paths>
    ```
-   Capture stdout. Shell-hook targets skip this step.
+   Capture stdout.
 
 3. **Paraphrase planner claims into spec vocabulary.** Apply the Sanitization rules above before forwarding any planner/reviewer text to the test-writer.
 
@@ -68,11 +66,10 @@ No regex-based sanitizer is mandated — paraphrasing is done by the orchestrato
    {full contents of docs/specs/NNN-<slug>.md, inlined verbatim}
 
    ## Target language
-   {"Python (pytest)" | "Shell (bats)"}
+   Python (pytest)
 
    ## API manifest
-   {for Python: stdout of `scripts/extract_api.py <target-paths>`, inlined verbatim}
-   {for shell: omit; instead list target hook scripts and adjacent helpers under tests/hooks/helpers/}
+   {stdout of `scripts/extract_api.py <target-paths>`, inlined verbatim}
 
    ## Target test paths
    {test paths chosen in step 1}
@@ -99,8 +96,7 @@ No regex-based sanitizer is mandated — paraphrasing is done by the orchestrato
 7. **Implement.** Now write the implementation against the failing tests. Standard TDD: red → green incrementally. You may Read the test files.
 
 8. **Post-impl verification.**
-   - Python: `uv run pytest <test-path> --tb=short` — all-green required.
-   - Shell: `bats tests/hooks/` — all-green required.
+   - `uv run pytest <test-path> --tb=short` — all-green required.
    - On failure, fix the impl and re-run. Do NOT modify the failing tests to make them pass. If the test itself is wrong, classify as a spec gap → halt, surface to user.
 
 9. **Commit impl:** `git commit -m "<feat|fix>: <description>"`. Use `feat:` for new behavior, `fix:` for bug fixes.

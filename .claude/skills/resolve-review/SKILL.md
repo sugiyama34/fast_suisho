@@ -149,8 +149,7 @@ After all threads are processed, if any commits were made:
 ### 5a — Run tests
 
 Check which files were changed and run the appropriate test suites:
-- Bot code changed: `uv run pytest tests/bot/`
-- Hook code changed: `bats tests/hooks/`
+- Python code changed: `uv run pytest tests/`
 
 Verify no lint errors remain in changed files.
 

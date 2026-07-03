@@ -86,37 +86,21 @@ If no new ADRs or specs exist on the branch, skip this step.
 
 ## Step 3 — Run Tests (if relevant files were changed)
 
-### Hook tests
+### Python tests
 
-Check whether any hooks or hook tests were modified in this branch:
-
-```bash
-git diff main...HEAD --name-only | grep -E '^(\.(claude/hooks/|githooks/)|tests/hooks/)' || true
-```
-
-If there are matches and `bats` is available, run the test suite:
+Check whether any Python code, tests, or dependency files were modified in this branch:
 
 ```bash
-bats tests/hooks/
-```
-
-If no hook-related files were changed, or `bats` is not installed, skip this part.
-
-### Bot tests
-
-Check whether any bot code or bot tests were modified in this branch:
-
-```bash
-git diff main...HEAD --name-only | grep -E '^(bot/|tests/bot/|pyproject\.toml|uv\.lock)' || true
+git diff main...HEAD --name-only | grep -E '^(tools/|tests/|pyproject\.toml|uv\.lock)' || true
 ```
 
 If there are matches, run the test suite:
 
 ```bash
-uv run pytest tests/bot/
+uv run pytest tests/
 ```
 
-If no bot-related files were changed, skip this part.
+If no Python-related files were changed, skip this part.
 
 ### Result
 
