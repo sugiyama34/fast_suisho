@@ -21,13 +21,17 @@ from tools.nnue.model import (
 
 
 def _read_u32(buf: bytes, offset: int) -> tuple[int, int]:
-    return int.from_bytes(buf[offset : offset + 4], "little"), offset + 4
+    field = buf[offset : offset + 4]
+    if len(field) != 4:
+        raise ValueError(f"truncated u32 field at offset {offset}")
+    return int.from_bytes(field, "little"), offset + 4
 
 
 def _read_affine(buf: bytes, offset: int, out_dims: int, padded_in: int) -> tuple[AffineLayer, int]:
-    biases = np.frombuffer(buf, dtype="<i4", count=out_dims, offset=offset)
+    # frombuffer は bytes 上の read-only view を返すため、編集可能な配列に copy する
+    biases = np.frombuffer(buf, dtype="<i4", count=out_dims, offset=offset).copy()
     offset += out_dims * 4
-    weights = np.frombuffer(buf, dtype=np.int8, count=out_dims * padded_in, offset=offset)
+    weights = np.frombuffer(buf, dtype=np.int8, count=out_dims * padded_in, offset=offset).copy()
     offset += out_dims * padded_in
     return AffineLayer(biases=biases, weights=weights.reshape(out_dims, padded_in)), offset
 

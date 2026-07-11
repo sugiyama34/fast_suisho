@@ -85,19 +85,26 @@ def channel_stats(l1: np.ndarray) -> list[str]:
     ]
 
 
+def _logical_in_dims(model: NNUEModel) -> dict[str, int]:
+    # パディング列を除いた論理入力次元。ゼロ割合の分母に padding を含めると
+    # スパース性を過大評価する (fc_1 は 32 列中 18 列が構造的ゼロ)
+    arch = model.arch
+    return {"fc_0": arch.half_dims, "fc_1": arch.fc1_in, "fc_2": arch.hidden2_dims}
+
+
 def stack_stats(model: NNUEModel) -> list[str]:
     lines = [
         "",
         "## LayerStacks (9 スタック)",
         "",
-        "| layer | shape (out × padded_in) | 重み範囲 | ゼロ割合 |",
+        "| layer | shape (out × in, padding 除外) | 重み範囲 | ゼロ割合 |",
         "|---|---|---|---|",
     ]
-    for name in ("fc_0", "fc_1", "fc_2"):
-        ws = np.stack([getattr(s, name).weights for s in model.layer_stacks])
+    for name, in_dims in _logical_in_dims(model).items():
+        ws = np.stack([getattr(s, name).weights for s in model.layer_stacks])[:, :, :in_dims]
         zero = np.count_nonzero(ws == 0) / ws.size
         lines.append(
-            f"| {name} | {ws.shape[1]} × {ws.shape[2]} | [{ws.min()}, {ws.max()}] | {_pct(zero)} |"
+            f"| {name} | {ws.shape[1]} × {in_dims} | [{ws.min()}, {ws.max()}] | {_pct(zero)} |"
         )
     fc1 = np.stack([s.fc_1.weights for s in model.layer_stacks])
     pad_zero = not fc1[:, :, model.arch.fc1_in :].any()
@@ -110,7 +117,7 @@ def stack_stats(model: NNUEModel) -> list[str]:
 
 
 def plot_ft_weight_hist(model: NNUEModel, out: Path) -> None:
-    flat = model.feature_transformer.weights.reshape(-1)
+    flat = np.clip(model.feature_transformer.weights.reshape(-1), -100, 100)
     fig, ax = plt.subplots(figsize=(7, 4))
     ax.hist(flat, bins=201, range=(-100.5, 100.5), color=HUE)
     ax.set_yscale("log")
@@ -134,8 +141,10 @@ def plot_channel_l1(l1: np.ndarray, out: Path) -> None:
 
 def plot_fc_weight_hists(model: NNUEModel, out: Path) -> None:
     fig, axes = plt.subplots(1, 3, figsize=(10.5, 3.5), sharey=True)
-    for ax, name in zip(axes, ("fc_0", "fc_1", "fc_2"), strict=True):
-        ws = np.concatenate([getattr(s, name).weights.reshape(-1) for s in model.layer_stacks])
+    for ax, (name, in_dims) in zip(axes, _logical_in_dims(model).items(), strict=True):
+        ws = np.concatenate(
+            [getattr(s, name).weights[:, :in_dims].reshape(-1) for s in model.layer_stacks]
+        )
         ax.hist(ws, bins=64, range=(-128, 128), color=HUE)
         ax.set_yscale("log")
         ax.set_title(name)

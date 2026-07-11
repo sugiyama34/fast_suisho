@@ -31,6 +31,10 @@ def decode(data: bytes | np.ndarray, count: int, dtype: type = np.int16) -> np.n
     ends = np.flatnonzero(raw < 0x80)
     if len(ends) != count:
         raise ValueError(f"expected {count} varints, found {len(ends)}")
+    if count == 0:
+        if len(raw) != 0:
+            raise ValueError("trailing bytes after last varint")
+        return np.empty(0, dtype=dtype)
     if ends[-1] != len(raw) - 1:
         raise ValueError("trailing bytes after last varint")
     starts = np.empty(count, dtype=np.int64)
@@ -63,6 +67,8 @@ def encode(values: np.ndarray) -> bytes:
     max_len = _max_encoded_len(dtype)
 
     v = values.reshape(-1).astype(np.int64)
+    if v.size == 0:
+        return b""
     # 最短長: 残り (v >> 7k) が 0 か -1 で、直前グループの bit6 が符号と一致した時点で終端
     lens = np.full(v.shape, max_len, dtype=np.int64)
     for k in range(max_len - 1, 0, -1):
@@ -88,8 +94,13 @@ def read_block(
     if magic != LEB128_MAGIC:
         raise ValueError(f"LEB128 magic not found at offset {offset}")
     offset += len(LEB128_MAGIC)
-    nbytes = int.from_bytes(buf[offset : offset + 4], "little")
+    size_field = buf[offset : offset + 4]
+    if len(size_field) != 4:
+        raise ValueError(f"truncated LEB128 length field at offset {offset}")
+    nbytes = int.from_bytes(size_field, "little")
     offset += 4
+    if offset + nbytes > len(buf):
+        raise ValueError(f"truncated LEB128 body at offset {offset}")
     body = np.frombuffer(buf, dtype=np.uint8, count=nbytes, offset=offset)
     return decode(body, count, dtype), offset + nbytes
 

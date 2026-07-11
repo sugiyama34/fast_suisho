@@ -34,6 +34,27 @@ def test_int16_exhaustive_roundtrip() -> None:
     assert np.array_equal(leb128.decode(leb128.encode(values), len(values), np.int16), values)
 
 
+def test_empty_roundtrip() -> None:
+    empty = np.array([], dtype=np.int16)
+    assert leb128.encode(empty) == b""
+    assert len(leb128.decode(b"", 0, np.int16)) == 0
+    block = leb128.write_block(empty)
+    decoded, end = leb128.read_block(block, 0, 0, np.int16)
+    assert end == len(block)
+    assert len(decoded) == 0
+
+
+def test_read_block_rejects_truncated_length_field() -> None:
+    with pytest.raises(ValueError, match="truncated LEB128 length field"):
+        leb128.read_block(leb128.LEB128_MAGIC + b"\x04\x00", 0, 1, np.int16)
+
+
+def test_read_block_rejects_truncated_body() -> None:
+    block = leb128.write_block(np.array([1000], dtype=np.int16))
+    with pytest.raises(ValueError, match="truncated LEB128 body"):
+        leb128.read_block(block[:-1], 0, 1, np.int16)
+
+
 def test_decode_accepts_non_minimal_encoding() -> None:
     # 冗長な継続バイト付き 0 (\x80\x00) も C++ reader と同様に受理する
     assert leb128.decode(b"\x80\x00", 1, np.int16)[0] == 0

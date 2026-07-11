@@ -79,6 +79,33 @@ def test_parse_rejects_trailing_bytes() -> None:
         io.parse_bytes(buf, TINY_ARCH)
 
 
+def test_parse_rejects_truncated_file() -> None:
+    buf = io.serialize_bytes(_random_model(TINY_ARCH))
+    with pytest.raises(ValueError):
+        io.parse_bytes(buf[:-100], TINY_ARCH)
+    with pytest.raises(ValueError, match="truncated u32"):
+        io.parse_bytes(buf[:6], TINY_ARCH)
+
+
+def test_parsed_arrays_are_writable() -> None:
+    parsed = io.parse_bytes(io.serialize_bytes(_random_model(TINY_ARCH)), TINY_ARCH)
+    parsed.feature_transformer.weights[0, 0] += 1
+    parsed.layer_stacks[0].fc_1.weights[0, 0] += 1
+    parsed.layer_stacks[0].fc_1.biases[0] += 1
+
+
+def test_serialize_rejects_wrong_shape_or_dtype() -> None:
+    model = _random_model(TINY_ARCH)
+    model.feature_transformer.biases = model.feature_transformer.biases.astype(np.int32)
+    with pytest.raises(ValueError, match="feature_transformer.biases"):
+        io.serialize_bytes(model)
+
+    model = _random_model(TINY_ARCH)
+    model.layer_stacks[0].fc_1.weights = model.layer_stacks[0].fc_1.weights[:, :-1]
+    with pytest.raises(ValueError, match="affine weights"):
+        io.serialize_bytes(model)
+
+
 def test_parse_rejects_bad_version() -> None:
     buf = bytearray(io.serialize_bytes(_random_model(TINY_ARCH)))
     buf[0] ^= 0xFF
