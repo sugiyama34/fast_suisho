@@ -3,7 +3,10 @@ name = "fast-suisho"
 version = "0.1.0"
 description = "Acceleration experiments for the Suisho 11 shogi NNUE evaluation network"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "matplotlib>=3.9",
+    "numpy>=2.0",
+]
 
 [dependency-groups]
 dev = [
@@ -17,3 +20,4 @@ line-length = 100
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
