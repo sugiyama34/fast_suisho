@@ -110,7 +110,9 @@ $$q_j = \min\!\left(127,\ \left\lfloor s_j^2 / 2^{19} \right\rfloor\right) \qqua
 
 $$r = B^{(1)} + W^{(1)} [q; h] \qquad r \in \mathbb{Z}^{64}\ (\text{int32})$$
 
-$$y_j = \mathrm{clamp}\!\left(\left\lfloor r_j / 2^6 \right\rfloor,\ 0,\ 127\right) \qquad (\text{ClippedReLU } ac\_1)$$
+続けて ClippedReLU (`ac_1`):
+
+$$y_j = \mathrm{clamp}\!\left(\left\lfloor r_j / 2^6 \right\rfloor,\ 0,\ 127\right)$$
 
 $W^{(1)}$: int8。論理形状 $(64, 14)$、ファイル上は $(64, 32)$ に列パディング
 (列 14〜31 は全ゼロ)。
@@ -134,7 +136,9 @@ shortcut $s_7$ は**シフトなし**で加算される ($o$ と同じ 64 倍ス
 
 ## [8] 最終スコア
 
-$$\text{eval} = \left\lfloor \frac{\text{out}}{\text{FV\_SCALE}} \right\rfloor \qquad (\text{エンジンオプション。デフォルト } 16)$$
+$$\text{eval} = \left\lfloor \frac{\text{out}}{F} \right\rfloor$$
+
+$F$ = `FV_SCALE` (エンジンオプション。デフォルト 16)。
 
 ## バケット選択 (9 スタックのどれを使うか)
 
