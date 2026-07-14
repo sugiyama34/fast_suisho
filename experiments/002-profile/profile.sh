@@ -88,7 +88,7 @@ shutdown_engine() {
   wait "$ENGINE_PID" 2>/dev/null || true
   ENGINE_PID=
   rm -f "$FIFO"; FIFO=
-  grep -E 'Nodes (searched|/second)' "$ENGINE_LOG" | tail -2 || true
+  grep -E 'Nodes( searched|/second)' "$ENGINE_LOG" | tail -2 || true
 }
 
 echo
@@ -98,7 +98,7 @@ perf record -F "$FREQ" -e cycles:u --call-graph dwarf,8192 -o "$OUTDIR/perf.data
 PERF_PID=$!
 sleep 1   # perf のアタッチ完了待ち
 run_bench_and_wait
-kill -INT "$PERF_PID"
+kill -INT "$PERF_PID" 2>/dev/null || true
 wait "$PERF_PID" || true
 shutdown_engine
 
@@ -110,7 +110,7 @@ perf stat -e cycles,instructions,branches,branch-misses,cache-references,cache-m
 PERF_PID=$!
 sleep 1
 run_bench_and_wait
-kill -INT "$PERF_PID"
+kill -INT "$PERF_PID" 2>/dev/null || true
 wait "$PERF_PID" || true
 shutdown_engine
 
