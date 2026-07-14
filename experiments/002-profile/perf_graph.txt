@@ -1,0 +1,587 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 16K of event 'cycles:u'
+# Event count (approx.): 131576903165
+#
+# Children      Self  Command          Shared Object        Symbol                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
+# ........  ........  ...............  ...................  .........................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................
+#
+    68.89%     4.79%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] int YaneuraOu::Search::YaneuraOuWorker::search<(YaneuraOu::NodeType)0>(YaneuraOu::Position&, YaneuraOu::Search::Stack*, int, int, int, bool)
+            |
+            ---int YaneuraOu::Search::YaneuraOuWorker::search<(YaneuraOu::NodeType)0>(YaneuraOu::Position&, YaneuraOu::Search::Stack*, int, int, int, bool)
+               |          
+               |--32.25%--YaneuraOu::Search::YaneuraOuWorker::evaluate(YaneuraOu::Position const&) (inlined)
+               |          |          
+               |          |--27.71%--ComputeScore (inlined)
+               |          |          |          
+               |          |          |--22.92%--YaneuraOu::Eval::NNUE::FeatureTransformer::Transform(YaneuraOu::Position const&, unsigned char*, bool) const (inlined)
+               |          |          |          |          
+               |          |          |          |--13.21%--YaneuraOu::Eval::NNUE::FeatureTransformer::refresh_accumulator(YaneuraOu::Position const&) const (inlined)
+               |          |          |          |          
+               |          |          |           --9.12%--YaneuraOu::Eval::NNUE::FeatureTransformer::UpdateAccumulatorIfPossible(YaneuraOu::Position const&) const (inlined)
+               |          |          |                     YaneuraOu::Eval::NNUE::FeatureTransformer::update_accumulator(YaneuraOu::Position const&) const (inlined)
+               |          |          |                     |          
+               |          |          |                     |--1.28%--__memcpy_avx_unaligned_erms (inlined)
+               |          |          |                     |          
+               |          |          |                      --1.03%--YaneuraOu::Eval::NNUE::ComputeScore(YaneuraOu::Position const&, bool) [clone .lto_priv.0]
+               |          |          |                                |          
+               |          |          |                                 --1.02%--__memcpy_avx_unaligned_erms (inlined)
+               |          |          |          
+               |          |           --4.77%--YaneuraOu::Eval::NNUE::Network::Propagate(unsigned char const*, char*) const (inlined)
+               |          |                     |          
+               |          |                      --4.62%--YaneuraOu::Eval::NNUE::Layers::AffineTransformSparseInputExplicit<1024u, 8u>::Propagate(unsigned char const*, int*) const (inlined)
+               |          |                                |          
+               |          |                                 --1.96%--m256_add_dpbusd_epi32 (inlined)
+               |          |                                           |          
+               |          |                                            --1.17%--_mm256_add_epi32(long long __vector(4), long long __vector(4)) (inlined)
+               |          |          
+               |           --4.51%--YaneuraOu::Eval::NNUE::ComputeScore(YaneuraOu::Position const&, bool) [clone .lto_priv.0]
+               |                     |          
+               |                     |--2.57%--YaneuraOu::Eval::NNUE::FeatureTransformer::Transform(YaneuraOu::Position const&, unsigned char*, bool) const (inlined)
+               |                     |          |          
+               |                     |           --1.15%--YaneuraOu::Eval::NNUE::FeatureTransformer::refresh_accumulator(YaneuraOu::Position const&) const (inlined)
+               |                     |          
+               |                      --1.53%--YaneuraOu::Eval::NNUE::Network::Propagate(unsigned char const*, char*) const (inlined)
+               |          
+               |--12.56%--YaneuraOu::MovePicker::next_move()
+               |          |          
+               |          |--3.85%--YaneuraOu::ExtMove* YaneuraOu::MovePicker::score<(YaneuraOu::GenType)0>(YaneuraOu::MoveList<(YaneuraOu::GenType)0> const&) (inlined)
+               |          |          
+               |          |--3.03%--partial_insertion_sort (inlined)
+               |          |          
+               |          |--1.33%--YaneuraOu::MoveList<(YaneuraOu::GenType)0>::MoveList(YaneuraOu::Position const&) (inlined)
+               |          |          |          
+               |          |           --1.33%--YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)0>(YaneuraOu::Position const&, YaneuraOu::Move*) (inlined)
+               |          |                     YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)0>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+               |          |                     YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)0, false>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+               |          |          
+               |          |--1.09%--YaneuraOu::MoveList<(YaneuraOu::GenType)1>::MoveList(YaneuraOu::Position const&) (inlined)
+               |          |          YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)1>(YaneuraOu::Position const&, YaneuraOu::Move*) (inlined)
+               |          |          YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)1>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+               |          |          YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)1, false>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+               |          |          
+               |           --1.03%--YaneuraOu::MoveList<(YaneuraOu::GenType)8>::MoveList(YaneuraOu::Position const&) (inlined)
+               |                     YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)8>(YaneuraOu::Position const&, YaneuraOu::Move*) (inlined)
+               |                     YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)8>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+               |                     YaneuraOu::Move* YaneuraOu::generateEvasionMoves<false>(YaneuraOu::Position const&, YaneuraOu::Move*) (inlined)
+               |          
+               |--8.31%--YaneuraOu::Search::YaneuraOuWorker::do_move(YaneuraOu::Position&, YaneuraOu::Move, YaneuraOu::StateInfo&, bool, YaneuraOu::Search::Stack*)
+               |          |          
+               |           --8.11%--void YaneuraOu::Position::do_move<YaneuraOu::TranspositionTable>(YaneuraOu::Move, YaneuraOu::StateInfo&, bool, YaneuraOu::TranspositionTable const*) (inlined)
+               |                     |          
+               |                     |--4.79%--void YaneuraOu::Position::do_move_impl<(YaneuraOu::Color)1, YaneuraOu::TranspositionTable>(YaneuraOu::Move, YaneuraOu::StateInfo&, bool, YaneuraOu::TranspositionTable const*) (inlined)
+               |                     |          
+               |                      --3.32%--void YaneuraOu::Position::do_move_impl<(YaneuraOu::Color)0, YaneuraOu::TranspositionTable>(YaneuraOu::Move, YaneuraOu::StateInfo&, bool, YaneuraOu::TranspositionTable const*) (inlined)
+               |          
+               |--1.75%--YaneuraOu::Move YaneuraOu::Mate::mate_1ply_imp<(YaneuraOu::Color)0>(YaneuraOu::Position const&)
+               |          
+               |--1.46%--correction_value (inlined)
+               |          
+               |--1.28%--YaneuraOu::Move YaneuraOu::Mate::mate_1ply_imp<(YaneuraOu::Color)1>(YaneuraOu::Position const&)
+               |          
+                --1.04%--YaneuraOu::TranspositionTable::probe(unsigned long, YaneuraOu::Position const&) const
+
+    53.01%    51.03%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::Eval::NNUE::ComputeScore(YaneuraOu::Position const&, bool) [clone .lto_priv.0]
+            |          
+            |--29.54%--int YaneuraOu::Search::YaneuraOuWorker::search<(YaneuraOu::NodeType)0>(YaneuraOu::Position&, YaneuraOu::Search::Stack*, int, int, int, bool)
+            |          YaneuraOu::Search::YaneuraOuWorker::evaluate(YaneuraOu::Position const&) (inlined)
+            |          |          
+            |          |--25.37%--ComputeScore (inlined)
+            |          |          |          
+            |          |          |--20.58%--YaneuraOu::Eval::NNUE::FeatureTransformer::Transform(YaneuraOu::Position const&, unsigned char*, bool) const (inlined)
+            |          |          |          |          
+            |          |          |          |--13.20%--YaneuraOu::Eval::NNUE::FeatureTransformer::refresh_accumulator(YaneuraOu::Position const&) const (inlined)
+            |          |          |          |          
+            |          |          |           --6.79%--YaneuraOu::Eval::NNUE::FeatureTransformer::UpdateAccumulatorIfPossible(YaneuraOu::Position const&) const (inlined)
+            |          |          |                     YaneuraOu::Eval::NNUE::FeatureTransformer::update_accumulator(YaneuraOu::Position const&) const (inlined)
+            |          |          |          
+            |          |           --4.77%--YaneuraOu::Eval::NNUE::Network::Propagate(unsigned char const*, char*) const (inlined)
+            |          |                     |          
+            |          |                      --4.62%--YaneuraOu::Eval::NNUE::Layers::AffineTransformSparseInputExplicit<1024u, 8u>::Propagate(unsigned char const*, int*) const (inlined)
+            |          |                                |          
+            |          |                                 --1.96%--m256_add_dpbusd_epi32 (inlined)
+            |          |                                           |          
+            |          |                                            --1.17%--_mm256_add_epi32(long long __vector(4), long long __vector(4)) (inlined)
+            |          |          
+            |           --4.18%--YaneuraOu::Eval::NNUE::ComputeScore(YaneuraOu::Position const&, bool) [clone .lto_priv.0]
+            |                     |          
+            |                     |--2.24%--YaneuraOu::Eval::NNUE::FeatureTransformer::Transform(YaneuraOu::Position const&, unsigned char*, bool) const (inlined)
+            |                     |          
+            |                      --1.53%--YaneuraOu::Eval::NNUE::Network::Propagate(unsigned char const*, char*) const (inlined)
+            |          
+            |--21.19%--int YaneuraOu::Search::YaneuraOuWorker::qsearch<(YaneuraOu::NodeType)0, true>(YaneuraOu::Position&, YaneuraOu::Search::Stack*, int, int)
+            |          YaneuraOu::Search::YaneuraOuWorker::evaluate(YaneuraOu::Position const&) (inlined)
+            |          |          
+            |          |--18.92%--ComputeScore (inlined)
+            |          |          |          
+            |          |          |--17.09%--YaneuraOu::Eval::NNUE::FeatureTransformer::Transform(YaneuraOu::Position const&, unsigned char*, bool) const (inlined)
+            |          |          |          |          
+            |          |          |          |--15.20%--YaneuraOu::Eval::NNUE::FeatureTransformer::refresh_accumulator(YaneuraOu::Position const&) const (inlined)
+            |          |          |          |          
+            |          |          |           --1.64%--YaneuraOu::Eval::NNUE::FeatureTransformer::UpdateAccumulatorIfPossible(YaneuraOu::Position const&) const (inlined)
+            |          |          |                     YaneuraOu::Eval::NNUE::FeatureTransformer::update_accumulator(YaneuraOu::Position const&) const (inlined)
+            |          |          |          
+            |          |           --1.82%--YaneuraOu::Eval::NNUE::Network::Propagate(unsigned char const*, char*) const (inlined)
+            |          |                     |          
+            |          |                      --1.78%--YaneuraOu::Eval::NNUE::Layers::AffineTransformSparseInputExplicit<1024u, 8u>::Propagate(unsigned char const*, int*) const (inlined)
+            |          |          
+            |           --2.27%--YaneuraOu::Eval::NNUE::ComputeScore(YaneuraOu::Position const&, bool) [clone .lto_priv.0]
+            |                     |          
+            |                      --1.39%--YaneuraOu::Eval::NNUE::FeatureTransformer::Transform(YaneuraOu::Position const&, unsigned char*, bool) const (inlined)
+            |          
+             --1.98%--YaneuraOu::Eval::NNUE::ComputeScore(YaneuraOu::Position const&, bool) [clone .lto_priv.0]
+                       |          
+                        --1.22%--__memcpy_avx_unaligned_erms (inlined)
+
+    47.48%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] ComputeScore (inlined)
+            |
+            ---ComputeScore (inlined)
+               |          
+               |--40.81%--YaneuraOu::Eval::NNUE::FeatureTransformer::Transform(YaneuraOu::Position const&, unsigned char*, bool) const (inlined)
+               |          |          
+               |          |--28.62%--YaneuraOu::Eval::NNUE::FeatureTransformer::refresh_accumulator(YaneuraOu::Position const&) const (inlined)
+               |          |          |          
+               |          |           --1.66%--_mm256_add_epi16(long long __vector(4), long long __vector(4)) (inlined)
+               |          |          
+               |           --11.34%--YaneuraOu::Eval::NNUE::FeatureTransformer::UpdateAccumulatorIfPossible(YaneuraOu::Position const&) const (inlined)
+               |                     YaneuraOu::Eval::NNUE::FeatureTransformer::update_accumulator(YaneuraOu::Position const&) const (inlined)
+               |                     |          
+               |                     |--1.60%--__memcpy_avx_unaligned_erms (inlined)
+               |                     |          
+               |                      --1.24%--YaneuraOu::Eval::NNUE::ComputeScore(YaneuraOu::Position const&, bool) [clone .lto_priv.0]
+               |                                |          
+               |                                 --1.22%--__memcpy_avx_unaligned_erms (inlined)
+               |          
+                --6.64%--YaneuraOu::Eval::NNUE::Network::Propagate(unsigned char const*, char*) const (inlined)
+                          |          
+                           --6.44%--YaneuraOu::Eval::NNUE::Layers::AffineTransformSparseInputExplicit<1024u, 8u>::Propagate(unsigned char const*, int*) const (inlined)
+                                     |          
+                                     |--2.69%--m256_add_dpbusd_epi32 (inlined)
+                                     |          |          
+                                     |          |--1.57%--_mm256_add_epi32(long long __vector(4), long long __vector(4)) (inlined)
+                                     |          |          
+                                     |           --1.12%--_mm256_madd_epi16(long long __vector(4), long long __vector(4)) (inlined)
+                                     |          
+                                      --1.01%--find_nnz_explicit<256> (inlined)
+
+    45.18%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::Eval::NNUE::FeatureTransformer::Transform(YaneuraOu::Position const&, unsigned char*, bool) const (inlined)
+            |
+            ---YaneuraOu::Eval::NNUE::FeatureTransformer::Transform(YaneuraOu::Position const&, unsigned char*, bool) const (inlined)
+               |          
+               |--31.11%--YaneuraOu::Eval::NNUE::FeatureTransformer::refresh_accumulator(YaneuraOu::Position const&) const (inlined)
+               |          |          
+               |           --1.69%--_mm256_add_epi16(long long __vector(4), long long __vector(4)) (inlined)
+               |          
+                --12.21%--YaneuraOu::Eval::NNUE::FeatureTransformer::UpdateAccumulatorIfPossible(YaneuraOu::Position const&) const (inlined)
+                          |          
+                           --12.18%--YaneuraOu::Eval::NNUE::FeatureTransformer::update_accumulator(YaneuraOu::Position const&) const (inlined)
+                                     |          
+                                     |--1.60%--__memcpy_avx_unaligned_erms (inlined)
+                                     |          
+                                      --1.24%--YaneuraOu::Eval::NNUE::ComputeScore(YaneuraOu::Position const&, bool) [clone .lto_priv.0]
+                                                |          
+                                                 --1.22%--__memcpy_avx_unaligned_erms (inlined)
+
+    32.25%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::Search::YaneuraOuWorker::evaluate(YaneuraOu::Position const&) (inlined)
+            |
+            ---YaneuraOu::Search::YaneuraOuWorker::evaluate(YaneuraOu::Position const&) (inlined)
+               |          
+               |--27.71%--ComputeScore (inlined)
+               |          |          
+               |          |--22.92%--YaneuraOu::Eval::NNUE::FeatureTransformer::Transform(YaneuraOu::Position const&, unsigned char*, bool) const (inlined)
+               |          |          |          
+               |          |          |--13.21%--YaneuraOu::Eval::NNUE::FeatureTransformer::refresh_accumulator(YaneuraOu::Position const&) const (inlined)
+               |          |          |          
+               |          |           --9.12%--YaneuraOu::Eval::NNUE::FeatureTransformer::UpdateAccumulatorIfPossible(YaneuraOu::Position const&) const (inlined)
+               |          |                     YaneuraOu::Eval::NNUE::FeatureTransformer::update_accumulator(YaneuraOu::Position const&) const (inlined)
+               |          |                     |          
+               |          |                     |--1.28%--__memcpy_avx_unaligned_erms (inlined)
+               |          |                     |          
+               |          |                      --1.03%--YaneuraOu::Eval::NNUE::ComputeScore(YaneuraOu::Position const&, bool) [clone .lto_priv.0]
+               |          |                                |          
+               |          |                                 --1.02%--__memcpy_avx_unaligned_erms (inlined)
+               |          |          
+               |           --4.77%--YaneuraOu::Eval::NNUE::Network::Propagate(unsigned char const*, char*) const (inlined)
+               |                     |          
+               |                      --4.62%--YaneuraOu::Eval::NNUE::Layers::AffineTransformSparseInputExplicit<1024u, 8u>::Propagate(unsigned char const*, int*) const (inlined)
+               |                                |          
+               |                                 --1.96%--m256_add_dpbusd_epi32 (inlined)
+               |                                           |          
+               |                                            --1.17%--_mm256_add_epi32(long long __vector(4), long long __vector(4)) (inlined)
+               |          
+                --4.51%--YaneuraOu::Eval::NNUE::ComputeScore(YaneuraOu::Position const&, bool) [clone .lto_priv.0]
+                          |          
+                          |--2.57%--YaneuraOu::Eval::NNUE::FeatureTransformer::Transform(YaneuraOu::Position const&, unsigned char*, bool) const (inlined)
+                          |          |          
+                          |           --1.15%--YaneuraOu::Eval::NNUE::FeatureTransformer::refresh_accumulator(YaneuraOu::Position const&) const (inlined)
+                          |          
+                           --1.53%--YaneuraOu::Eval::NNUE::Network::Propagate(unsigned char const*, char*) const (inlined)
+
+    31.11%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::Eval::NNUE::FeatureTransformer::refresh_accumulator(YaneuraOu::Position const&) const (inlined)
+            |
+            ---YaneuraOu::Eval::NNUE::FeatureTransformer::refresh_accumulator(YaneuraOu::Position const&) const (inlined)
+               |          
+                --1.69%--_mm256_add_epi16(long long __vector(4), long long __vector(4)) (inlined)
+
+    29.61%     0.63%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] int YaneuraOu::Search::YaneuraOuWorker::qsearch<(YaneuraOu::NodeType)0, true>(YaneuraOu::Position&, YaneuraOu::Search::Stack*, int, int)
+            |          
+             --29.59%--int YaneuraOu::Search::YaneuraOuWorker::qsearch<(YaneuraOu::NodeType)0, true>(YaneuraOu::Position&, YaneuraOu::Search::Stack*, int, int)
+                       |          
+                       |--22.16%--YaneuraOu::Search::YaneuraOuWorker::evaluate(YaneuraOu::Position const&) (inlined)
+                       |          |          
+                       |          |--19.47%--ComputeScore (inlined)
+                       |          |          |          
+                       |          |          |--17.64%--YaneuraOu::Eval::NNUE::FeatureTransformer::Transform(YaneuraOu::Position const&, unsigned char*, bool) const (inlined)
+                       |          |          |          |          
+                       |          |          |          |--15.20%--YaneuraOu::Eval::NNUE::FeatureTransformer::refresh_accumulator(YaneuraOu::Position const&) const (inlined)
+                       |          |          |          |          
+                       |          |          |           --2.19%--YaneuraOu::Eval::NNUE::FeatureTransformer::UpdateAccumulatorIfPossible(YaneuraOu::Position const&) const (inlined)
+                       |          |          |                     YaneuraOu::Eval::NNUE::FeatureTransformer::update_accumulator(YaneuraOu::Position const&) const (inlined)
+                       |          |          |          
+                       |          |           --1.82%--YaneuraOu::Eval::NNUE::Network::Propagate(unsigned char const*, char*) const (inlined)
+                       |          |                     |          
+                       |          |                      --1.78%--YaneuraOu::Eval::NNUE::Layers::AffineTransformSparseInputExplicit<1024u, 8u>::Propagate(unsigned char const*, int*) const (inlined)
+                       |          |          
+                       |           --2.68%--YaneuraOu::Eval::NNUE::ComputeScore(YaneuraOu::Position const&, bool) [clone .lto_priv.0]
+                       |                     |          
+                       |                      --1.79%--YaneuraOu::Eval::NNUE::FeatureTransformer::Transform(YaneuraOu::Position const&, unsigned char*, bool) const (inlined)
+                       |                                |          
+                       |                                 --1.33%--YaneuraOu::Eval::NNUE::FeatureTransformer::refresh_accumulator(YaneuraOu::Position const&) const (inlined)
+                       |          
+                       |--1.63%--YaneuraOu::MovePicker::next_move()
+                       |          
+                       |--1.17%--YaneuraOu::Search::YaneuraOuWorker::do_move(YaneuraOu::Position&, YaneuraOu::Move, YaneuraOu::StateInfo&, bool, YaneuraOu::Search::Stack*)
+                       |          |          
+                       |           --1.16%--void YaneuraOu::Position::do_move<YaneuraOu::TranspositionTable>(YaneuraOu::Move, YaneuraOu::StateInfo&, bool, YaneuraOu::TranspositionTable const*) (inlined)
+                       |          
+                        --1.07%--YaneuraOu::Move YaneuraOu::Mate::mate_1ply_imp<(YaneuraOu::Color)1>(YaneuraOu::Position const&)
+
+    22.16%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::Search::YaneuraOuWorker::evaluate(YaneuraOu::Position const&) (inlined)
+            |
+            ---YaneuraOu::Search::YaneuraOuWorker::evaluate(YaneuraOu::Position const&) (inlined)
+               |          
+               |--19.47%--ComputeScore (inlined)
+               |          |          
+               |          |--17.64%--YaneuraOu::Eval::NNUE::FeatureTransformer::Transform(YaneuraOu::Position const&, unsigned char*, bool) const (inlined)
+               |          |          |          
+               |          |          |--15.20%--YaneuraOu::Eval::NNUE::FeatureTransformer::refresh_accumulator(YaneuraOu::Position const&) const (inlined)
+               |          |          |          
+               |          |           --2.19%--YaneuraOu::Eval::NNUE::FeatureTransformer::UpdateAccumulatorIfPossible(YaneuraOu::Position const&) const (inlined)
+               |          |                     YaneuraOu::Eval::NNUE::FeatureTransformer::update_accumulator(YaneuraOu::Position const&) const (inlined)
+               |          |          
+               |           --1.82%--YaneuraOu::Eval::NNUE::Network::Propagate(unsigned char const*, char*) const (inlined)
+               |                     |          
+               |                      --1.78%--YaneuraOu::Eval::NNUE::Layers::AffineTransformSparseInputExplicit<1024u, 8u>::Propagate(unsigned char const*, int*) const (inlined)
+               |          
+                --2.68%--YaneuraOu::Eval::NNUE::ComputeScore(YaneuraOu::Position const&, bool) [clone .lto_priv.0]
+                          |          
+                           --1.79%--YaneuraOu::Eval::NNUE::FeatureTransformer::Transform(YaneuraOu::Position const&, unsigned char*, bool) const (inlined)
+                                     |          
+                                      --1.33%--YaneuraOu::Eval::NNUE::FeatureTransformer::refresh_accumulator(YaneuraOu::Position const&) const (inlined)
+
+    14.35%     8.56%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::MovePicker::next_move()
+            |          
+            |--7.93%--int YaneuraOu::Search::YaneuraOuWorker::search<(YaneuraOu::NodeType)0>(YaneuraOu::Position&, YaneuraOu::Search::Stack*, int, int, int, bool)
+            |          YaneuraOu::MovePicker::next_move()
+            |          |          
+            |          |--3.10%--YaneuraOu::ExtMove* YaneuraOu::MovePicker::score<(YaneuraOu::GenType)0>(YaneuraOu::MoveList<(YaneuraOu::GenType)0> const&) (inlined)
+            |          |          
+            |           --3.03%--partial_insertion_sort (inlined)
+            |          
+             --5.79%--YaneuraOu::MovePicker::next_move()
+                       |          
+                       |--1.93%--YaneuraOu::MoveList<(YaneuraOu::GenType)1>::MoveList(YaneuraOu::Position const&) (inlined)
+                       |          YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)1>(YaneuraOu::Position const&, YaneuraOu::Move*) (inlined)
+                       |          YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)1>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+                       |          YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)1, false>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+                       |          |          
+                       |           --1.13%--YaneuraOu::Move* YaneuraOu::generate_general<(YaneuraOu::GenType)1, (YaneuraOu::Color)1, false>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) [clone .isra.0]
+                       |          
+                       |--1.33%--YaneuraOu::MoveList<(YaneuraOu::GenType)0>::MoveList(YaneuraOu::Position const&) (inlined)
+                       |          YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)0>(YaneuraOu::Position const&, YaneuraOu::Move*) (inlined)
+                       |          YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)0>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+                       |          YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)0, false>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+                       |          
+                        --1.31%--YaneuraOu::MoveList<(YaneuraOu::GenType)8>::MoveList(YaneuraOu::Position const&) (inlined)
+                                  YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)8>(YaneuraOu::Position const&, YaneuraOu::Move*) (inlined)
+                                  YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)8>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+                                  YaneuraOu::Move* YaneuraOu::generateEvasionMoves<false>(YaneuraOu::Position const&, YaneuraOu::Move*) (inlined)
+
+    12.21%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::Eval::NNUE::FeatureTransformer::UpdateAccumulatorIfPossible(YaneuraOu::Position const&) const (inlined)
+            |
+            ---YaneuraOu::Eval::NNUE::FeatureTransformer::UpdateAccumulatorIfPossible(YaneuraOu::Position const&) const (inlined)
+               |          
+                --12.18%--YaneuraOu::Eval::NNUE::FeatureTransformer::update_accumulator(YaneuraOu::Position const&) const (inlined)
+                          |          
+                          |--1.60%--__memcpy_avx_unaligned_erms (inlined)
+                          |          
+                           --1.24%--YaneuraOu::Eval::NNUE::ComputeScore(YaneuraOu::Position const&, bool) [clone .lto_priv.0]
+                                     |          
+                                      --1.22%--__memcpy_avx_unaligned_erms (inlined)
+
+    12.18%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::Eval::NNUE::FeatureTransformer::update_accumulator(YaneuraOu::Position const&) const (inlined)
+            |
+            ---YaneuraOu::Eval::NNUE::FeatureTransformer::update_accumulator(YaneuraOu::Position const&) const (inlined)
+               |          
+               |--1.60%--__memcpy_avx_unaligned_erms (inlined)
+               |          
+                --1.24%--YaneuraOu::Eval::NNUE::ComputeScore(YaneuraOu::Position const&, bool) [clone .lto_priv.0]
+                          |          
+                           --1.22%--__memcpy_avx_unaligned_erms (inlined)
+
+    10.21%     8.32%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::Search::YaneuraOuWorker::do_move(YaneuraOu::Position&, YaneuraOu::Move, YaneuraOu::StateInfo&, bool, YaneuraOu::Search::Stack*)
+            |          
+            |--7.25%--int YaneuraOu::Search::YaneuraOuWorker::search<(YaneuraOu::NodeType)0>(YaneuraOu::Position&, YaneuraOu::Search::Stack*, int, int, int, bool)
+            |          |          
+            |           --6.79%--YaneuraOu::Search::YaneuraOuWorker::do_move(YaneuraOu::Position&, YaneuraOu::Move, YaneuraOu::StateInfo&, bool, YaneuraOu::Search::Stack*)
+            |                     |          
+            |                      --6.59%--void YaneuraOu::Position::do_move<YaneuraOu::TranspositionTable>(YaneuraOu::Move, YaneuraOu::StateInfo&, bool, YaneuraOu::TranspositionTable const*) (inlined)
+            |                                |          
+            |                                |--3.88%--void YaneuraOu::Position::do_move_impl<(YaneuraOu::Color)1, YaneuraOu::TranspositionTable>(YaneuraOu::Move, YaneuraOu::StateInfo&, bool, YaneuraOu::TranspositionTable const*) (inlined)
+            |                                |          
+            |                                 --2.71%--void YaneuraOu::Position::do_move_impl<(YaneuraOu::Color)0, YaneuraOu::TranspositionTable>(YaneuraOu::Move, YaneuraOu::StateInfo&, bool, YaneuraOu::TranspositionTable const*) (inlined)
+            |          
+             --1.89%--YaneuraOu::Search::YaneuraOuWorker::do_move(YaneuraOu::Position&, YaneuraOu::Move, YaneuraOu::StateInfo&, bool, YaneuraOu::Search::Stack*)
+                       void YaneuraOu::Position::do_move<YaneuraOu::TranspositionTable>(YaneuraOu::Move, YaneuraOu::StateInfo&, bool, YaneuraOu::TranspositionTable const*) (inlined)
+                       |          
+                        --1.12%--void YaneuraOu::Position::do_move_impl<(YaneuraOu::Color)1, YaneuraOu::TranspositionTable>(YaneuraOu::Move, YaneuraOu::StateInfo&, bool, YaneuraOu::TranspositionTable const*) (inlined)
+                                  |          
+                                   --1.00%--void YaneuraOu::Position::set_check_info<false>() const (inlined)
+                                             void YaneuraOu::Position::set_check_info<false, (YaneuraOu::Color)0>() const
+
+     9.98%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] void YaneuraOu::Position::do_move<YaneuraOu::TranspositionTable>(YaneuraOu::Move, YaneuraOu::StateInfo&, bool, YaneuraOu::TranspositionTable const*) (inlined)
+            |
+            ---void YaneuraOu::Position::do_move<YaneuraOu::TranspositionTable>(YaneuraOu::Move, YaneuraOu::StateInfo&, bool, YaneuraOu::TranspositionTable const*) (inlined)
+               |          
+               |--5.74%--void YaneuraOu::Position::do_move_impl<(YaneuraOu::Color)1, YaneuraOu::TranspositionTable>(YaneuraOu::Move, YaneuraOu::StateInfo&, bool, YaneuraOu::TranspositionTable const*) (inlined)
+               |          |          
+               |           --1.00%--void YaneuraOu::Position::set_check_info<false>() const (inlined)
+               |                     void YaneuraOu::Position::set_check_info<false, (YaneuraOu::Color)0>() const
+               |          
+                --4.24%--void YaneuraOu::Position::do_move_impl<(YaneuraOu::Color)0, YaneuraOu::TranspositionTable>(YaneuraOu::Move, YaneuraOu::StateInfo&, bool, YaneuraOu::TranspositionTable const*) (inlined)
+
+     8.83%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::Eval::NNUE::Network::Propagate(unsigned char const*, char*) const (inlined)
+            |
+            ---YaneuraOu::Eval::NNUE::Network::Propagate(unsigned char const*, char*) const (inlined)
+               |          
+               |--6.98%--YaneuraOu::Eval::NNUE::Layers::AffineTransformSparseInputExplicit<1024u, 8u>::Propagate(unsigned char const*, int*) const (inlined)
+               |          |          
+               |          |--2.71%--m256_add_dpbusd_epi32 (inlined)
+               |          |          |          
+               |          |          |--1.57%--_mm256_add_epi32(long long __vector(4), long long __vector(4)) (inlined)
+               |          |          |          
+               |          |           --1.13%--_mm256_madd_epi16(long long __vector(4), long long __vector(4)) (inlined)
+               |          |          
+               |           --1.46%--find_nnz_explicit<256> (inlined)
+               |          
+                --1.03%--YaneuraOu::Eval::NNUE::Layers::AffineTransformExplicit<14u, 64u>::Propagate(unsigned char const*, int*) const (inlined)
+
+     6.98%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::Eval::NNUE::Layers::AffineTransformSparseInputExplicit<1024u, 8u>::Propagate(unsigned char const*, int*) const (inlined)
+            |
+            ---YaneuraOu::Eval::NNUE::Layers::AffineTransformSparseInputExplicit<1024u, 8u>::Propagate(unsigned char const*, int*) const (inlined)
+               |          
+               |--2.71%--m256_add_dpbusd_epi32 (inlined)
+               |          |          
+               |          |--1.57%--_mm256_add_epi32(long long __vector(4), long long __vector(4)) (inlined)
+               |          |          
+               |           --1.13%--_mm256_madd_epi16(long long __vector(4), long long __vector(4)) (inlined)
+               |          
+                --1.46%--find_nnz_explicit<256> (inlined)
+
+     5.74%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] void YaneuraOu::Position::do_move_impl<(YaneuraOu::Color)1, YaneuraOu::TranspositionTable>(YaneuraOu::Move, YaneuraOu::StateInfo&, bool, YaneuraOu::TranspositionTable const*) (inlined)
+            |
+            ---void YaneuraOu::Position::do_move_impl<(YaneuraOu::Color)1, YaneuraOu::TranspositionTable>(YaneuraOu::Move, YaneuraOu::StateInfo&, bool, YaneuraOu::TranspositionTable const*) (inlined)
+               |          
+                --1.00%--void YaneuraOu::Position::set_check_info<false>() const (inlined)
+                          void YaneuraOu::Position::set_check_info<false, (YaneuraOu::Color)0>() const
+
+     4.24%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] void YaneuraOu::Position::do_move_impl<(YaneuraOu::Color)0, YaneuraOu::TranspositionTable>(YaneuraOu::Move, YaneuraOu::StateInfo&, bool, YaneuraOu::TranspositionTable const*) (inlined)
+            |
+            ---void YaneuraOu::Position::do_move_impl<(YaneuraOu::Color)0, YaneuraOu::TranspositionTable>(YaneuraOu::Move, YaneuraOu::StateInfo&, bool, YaneuraOu::TranspositionTable const*) (inlined)
+
+     3.89%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::ExtMove* YaneuraOu::MovePicker::score<(YaneuraOu::GenType)0>(YaneuraOu::MoveList<(YaneuraOu::GenType)0> const&) (inlined)
+            |
+            ---YaneuraOu::ExtMove* YaneuraOu::MovePicker::score<(YaneuraOu::GenType)0>(YaneuraOu::MoveList<(YaneuraOu::GenType)0> const&) (inlined)
+
+     3.73%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] m256_add_dpbusd_epi32 (inlined)
+            |
+            ---m256_add_dpbusd_epi32 (inlined)
+               |          
+               |--1.75%--_mm256_madd_epi16(long long __vector(4), long long __vector(4)) (inlined)
+               |          
+                --1.71%--_mm256_add_epi32(long long __vector(4), long long __vector(4)) (inlined)
+
+     3.64%     0.00%  YaneuraOu-by-gc  libc.so.6            [.] __memcpy_avx_unaligned_erms (inlined)
+            |
+            ---__memcpy_avx_unaligned_erms (inlined)
+
+     3.62%     3.62%  YaneuraOu-by-gc  libc.so.6            [.] __memmove_avx_unaligned_erms
+            |          
+             --2.69%--int YaneuraOu::Search::YaneuraOuWorker::search<(YaneuraOu::NodeType)0>(YaneuraOu::Position&, YaneuraOu::Search::Stack*, int, int, int, bool)
+                       |          
+                        --2.59%--YaneuraOu::Search::YaneuraOuWorker::evaluate(YaneuraOu::Position const&) (inlined)
+                                  |          
+                                   --2.29%--ComputeScore (inlined)
+                                             YaneuraOu::Eval::NNUE::FeatureTransformer::Transform(YaneuraOu::Position const&, unsigned char*, bool) const (inlined)
+                                             YaneuraOu::Eval::NNUE::FeatureTransformer::UpdateAccumulatorIfPossible(YaneuraOu::Position const&) const (inlined)
+                                             YaneuraOu::Eval::NNUE::FeatureTransformer::update_accumulator(YaneuraOu::Position const&) const (inlined)
+                                             |          
+                                             |--1.28%--__memcpy_avx_unaligned_erms (inlined)
+                                             |          
+                                              --1.01%--YaneuraOu::Eval::NNUE::ComputeScore(YaneuraOu::Position const&, bool) [clone .lto_priv.0]
+                                                        __memcpy_avx_unaligned_erms (inlined)
+
+     3.16%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] partial_insertion_sort (inlined)
+            |
+            ---partial_insertion_sort (inlined)
+
+     2.65%     0.97%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::Move YaneuraOu::Mate::mate_1ply_imp<(YaneuraOu::Color)0>(YaneuraOu::Position const&)
+            |          
+             --1.68%--YaneuraOu::Move YaneuraOu::Mate::mate_1ply_imp<(YaneuraOu::Color)0>(YaneuraOu::Position const&)
+
+     2.63%     2.63%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::(anonymous namespace)::correction_value(YaneuraOu::Search::YaneuraOuWorker const&, YaneuraOu::Position const&, YaneuraOu::Search::Stack const*) [clone .lto_priv.0]
+            |          
+             --1.94%--int YaneuraOu::Search::YaneuraOuWorker::search<(YaneuraOu::NodeType)0>(YaneuraOu::Position&, YaneuraOu::Search::Stack*, int, int, int, bool)
+                       |          
+                        --1.46%--correction_value (inlined)
+
+     2.44%     1.31%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::Position::see_ge(YaneuraOu::Move, int) const
+            |          
+            |--1.13%--YaneuraOu::Position::see_ge(YaneuraOu::Move, int) const
+            |          |          
+            |           --1.02%--YaneuraOu::Position::attackers_to(YaneuraOu::Square, YaneuraOu::Bitboard const&) const
+            |          
+             --1.13%--int YaneuraOu::Search::YaneuraOuWorker::search<(YaneuraOu::NodeType)0>(YaneuraOu::Position&, YaneuraOu::Search::Stack*, int, int, int, bool)
+
+     2.35%     0.96%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::Move YaneuraOu::Mate::mate_1ply_imp<(YaneuraOu::Color)1>(YaneuraOu::Position const&)
+            |          
+             --1.39%--YaneuraOu::Move YaneuraOu::Mate::mate_1ply_imp<(YaneuraOu::Color)1>(YaneuraOu::Position const&)
+
+     2.00%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] _mm256_add_epi16(long long __vector(4), long long __vector(4)) (inlined)
+            |
+            ---_mm256_add_epi16(long long __vector(4), long long __vector(4)) (inlined)
+
+     1.94%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::MoveList<(YaneuraOu::GenType)1>::MoveList(YaneuraOu::Position const&) (inlined)
+            |
+            ---YaneuraOu::MoveList<(YaneuraOu::GenType)1>::MoveList(YaneuraOu::Position const&) (inlined)
+               YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)1>(YaneuraOu::Position const&, YaneuraOu::Move*) (inlined)
+               YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)1>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+               YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)1, false>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+               |          
+                --1.13%--YaneuraOu::Move* YaneuraOu::generate_general<(YaneuraOu::GenType)1, (YaneuraOu::Color)1, false>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) [clone .isra.0]
+
+     1.94%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)1>(YaneuraOu::Position const&, YaneuraOu::Move*) (inlined)
+            |
+            ---YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)1>(YaneuraOu::Position const&, YaneuraOu::Move*) (inlined)
+               YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)1>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+               YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)1, false>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+               |          
+                --1.13%--YaneuraOu::Move* YaneuraOu::generate_general<(YaneuraOu::GenType)1, (YaneuraOu::Color)1, false>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) [clone .isra.0]
+
+     1.94%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)1>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+            |
+            ---YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)1>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+               YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)1, false>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+               |          
+                --1.13%--YaneuraOu::Move* YaneuraOu::generate_general<(YaneuraOu::GenType)1, (YaneuraOu::Color)1, false>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) [clone .isra.0]
+
+     1.94%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)1, false>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+            |
+            ---YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)1, false>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+               |          
+                --1.13%--YaneuraOu::Move* YaneuraOu::generate_general<(YaneuraOu::GenType)1, (YaneuraOu::Color)1, false>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) [clone .isra.0]
+
+     1.92%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] correction_value (inlined)
+            |
+            ---correction_value (inlined)
+
+     1.75%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] _mm256_madd_epi16(long long __vector(4), long long __vector(4)) (inlined)
+            |
+            ---_mm256_madd_epi16(long long __vector(4), long long __vector(4)) (inlined)
+
+     1.71%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] _mm256_add_epi32(long long __vector(4), long long __vector(4)) (inlined)
+            |
+            ---_mm256_add_epi32(long long __vector(4), long long __vector(4)) (inlined)
+
+     1.68%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] void YaneuraOu::Position::set_check_info<false>() const (inlined)
+            |
+            ---void YaneuraOu::Position::set_check_info<false>() const (inlined)
+               |          
+                --1.00%--void YaneuraOu::Position::set_check_info<false, (YaneuraOu::Color)0>() const
+
+     1.60%     1.56%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::TranspositionTable::probe(unsigned long, YaneuraOu::Position const&) const
+            |          
+             --1.01%--int YaneuraOu::Search::YaneuraOuWorker::search<(YaneuraOu::NodeType)0>(YaneuraOu::Position&, YaneuraOu::Search::Stack*, int, int, int, bool)
+                       YaneuraOu::TranspositionTable::probe(unsigned long, YaneuraOu::Position const&) const
+
+     1.58%     1.58%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::bishopEffect(YaneuraOu::Square, YaneuraOu::Bitboard const&) [clone .isra.0]
+            |          
+             --1.15%--int YaneuraOu::Search::YaneuraOuWorker::search<(YaneuraOu::NodeType)0>(YaneuraOu::Position&, YaneuraOu::Search::Stack*, int, int, int, bool)
+
+     1.46%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] find_nnz_explicit<256> (inlined)
+            |
+            ---find_nnz_explicit<256> (inlined)
+
+     1.36%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::MoveList<(YaneuraOu::GenType)0>::MoveList(YaneuraOu::Position const&) (inlined)
+            |
+            ---YaneuraOu::MoveList<(YaneuraOu::GenType)0>::MoveList(YaneuraOu::Position const&) (inlined)
+               |          
+                --1.35%--YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)0>(YaneuraOu::Position const&, YaneuraOu::Move*) (inlined)
+                          YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)0>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+                          YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)0, false>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+
+     1.35%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)0>(YaneuraOu::Position const&, YaneuraOu::Move*) (inlined)
+            |
+            ---YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)0>(YaneuraOu::Position const&, YaneuraOu::Move*) (inlined)
+               YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)0>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+               YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)0, false>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+
+     1.35%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)0>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+            |
+            ---YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)0>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+               YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)0, false>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+
+     1.35%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)0, false>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+            |
+            ---YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)0, false>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+
+     1.31%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::MoveList<(YaneuraOu::GenType)8>::MoveList(YaneuraOu::Position const&) (inlined)
+            |
+            ---YaneuraOu::MoveList<(YaneuraOu::GenType)8>::MoveList(YaneuraOu::Position const&) (inlined)
+               YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)8>(YaneuraOu::Position const&, YaneuraOu::Move*) (inlined)
+               YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)8>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+               YaneuraOu::Move* YaneuraOu::generateEvasionMoves<false>(YaneuraOu::Position const&, YaneuraOu::Move*) (inlined)
+
+     1.31%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)8>(YaneuraOu::Position const&, YaneuraOu::Move*) (inlined)
+            |
+            ---YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)8>(YaneuraOu::Position const&, YaneuraOu::Move*) (inlined)
+               YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)8>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+               YaneuraOu::Move* YaneuraOu::generateEvasionMoves<false>(YaneuraOu::Position const&, YaneuraOu::Move*) (inlined)
+
+     1.31%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)8>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+            |
+            ---YaneuraOu::Move* YaneuraOu::generate<(YaneuraOu::GenType)8>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) (inlined)
+               YaneuraOu::Move* YaneuraOu::generateEvasionMoves<false>(YaneuraOu::Position const&, YaneuraOu::Move*) (inlined)
+
+     1.31%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::Move* YaneuraOu::generateEvasionMoves<false>(YaneuraOu::Position const&, YaneuraOu::Move*) (inlined)
+            |
+            ---YaneuraOu::Move* YaneuraOu::generateEvasionMoves<false>(YaneuraOu::Position const&, YaneuraOu::Move*) (inlined)
+
+     1.16%     0.79%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::Bitboard YaneuraOu::Position::attackers_to<(YaneuraOu::Color)0>(YaneuraOu::Square, YaneuraOu::Bitboard const&) const
+     1.13%     1.13%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::Bitboard::pop()
+     1.13%     0.63%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::Move* YaneuraOu::generate_general<(YaneuraOu::GenType)1, (YaneuraOu::Color)1, false>(YaneuraOu::Position const&, YaneuraOu::Move*, YaneuraOu::Square) [clone .isra.0]
+     1.07%     0.69%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::effects_from(YaneuraOu::Piece, YaneuraOu::Square, YaneuraOu::Bitboard const&)
+     1.03%     0.00%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::Eval::NNUE::Layers::AffineTransformExplicit<14u, 64u>::Propagate(unsigned char const*, int*) const (inlined)
+            |
+            ---YaneuraOu::Eval::NNUE::Layers::AffineTransformExplicit<14u, 64u>::Propagate(unsigned char const*, int*) const (inlined)
+
+     1.02%     0.75%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] YaneuraOu::Position::attackers_to(YaneuraOu::Square, YaneuraOu::Bitboard const&) const
+     1.00%     0.29%  YaneuraOu-by-gc  YaneuraOu-by-gcc     [.] void YaneuraOu::Position::set_check_info<false, (YaneuraOu::Color)0>() const
+
+
+#
+# (Cannot load tips.txt file, please install perf!)
+#
