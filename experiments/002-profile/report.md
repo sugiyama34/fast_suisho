@@ -158,8 +158,58 @@ intrinsic フレームは親関数に合算):
 4. **huge pages / PGO は数% 級**の見込み (dTLB 実測から)。採用時はベースラインにも
    適用して再計測 (PLAN の注意どおり)
 5. 探索部では MovePicker (8.6%, うち挿入ソート 3.2%) と do_move (8.3%) が大きいが、
-   本プロジェクトのスコープ (評価関数の高速化) 外。memmove 3.6% には accumulator
-   コピーが含まれ、FT 幅縮小で比例して減る副次効果がある
+   本プロジェクトのスコープ (評価関数の高速化) 外。memmove 3.6% のうち約 3.5 ポイントは
+   ComputeScore の update/refresh 経路内の accumulator コピーであり、費目表の
+   refresh 30.1% には含めていない (= finny tables の上限 +43% はその分保守的な見積り)。
+   FT 幅縮小で比例して減る副次効果もある
+
+## 付録: gprofng は perf の代替になるか (2026-07-14 検証)
+
+システム管理者から「サーバー安定性の観点で `kernel.perf_event_paranoid` を戻したいので、
+gprof / gprofng で代替できるなら知らせてほしい」との要望があり、同一バイナリ・
+同一ワークロード (bench 4局面 × 10秒 × 1スレッド) で gprofng 2.42 (クロック
+サンプリング — perf_event 非依存のため paranoid=4 でも動作する) を実測比較した。
+
+### 関数レベルの比率は一致する
+
+主要関数の self 比率 (perf = cycles:u / gprofng = Exclusive Total CPU, `-p hi` 1ms):
+
+| 関数 | perf | gprofng |
+|---|---|---|
+| ComputeScore | 51.0% | 49.4% |
+| MovePicker::next_move | 8.6% | 8.8% |
+| do_move | 8.3% | 8.6% |
+| search\<PV\> | 4.8% | 4.9% |
+| correction_value | 2.6% | 2.6% |
+| TT probe | 1.6% | 1.4% |
+| see_ge | 1.3% | 1.5% |
+
+±1.5 ポイント以内で一致 → **関数レベルの定点観測 (比率が動いたかの確認) には代替可**。
+生データ: `gprofng_functions.txt`。
+
+### ただし本実験の核心部分は代替不可
+
+1. **インライン内訳が取れない**: gprofng は本バイナリ (LTO + `-g`) の DWARF 行情報を
+   解釈できず、全関数が "instructions without line numbers" になる。つまり
+   ComputeScore 内の **refresh / 差分更新 / fc_0 の分離 (本実験の主結果) が不可能**
+   (perf は dwarf 展開で分離できた)
+2. **ハードウェアカウンタ不可**: IPC / キャッシュ / dTLB ミスは perf_event カーネル
+   インターフェース経由でしか取れないため、gprofng でも paranoid=4 では取得不能
+   (ツールの問題ではなくカーネル側のゲート)
+3. **オーバーヘッドが大きい**: NPS 低下は gprofng `-p hi` (1ms) で **-17%**、
+   デフォルト (10ms) で **-3.5%** (perf record 397Hz は -0.4%)。使うなら
+   デフォルトレートに限る
+4. **実行中プロセスへのアタッチ不可**: ローダ区間の混入を避けられない
+   (今回はローダが軽く実害なし)
+
+なお gprof (`-pg` 再ビルド) は計測対象自体を歪めるため候補外。
+
+### 運用の結論
+
+- 日常の粗い定点観測 (関数レベル) → gprofng デフォルトレートで可。paranoid は戻してよい
+- FT 内部の内訳・HW カウンタが必要な精密プロファイル (次回は finny tables 実装後の
+  検証を想定) → perf 必須。その時だけ一時緩和 (paranoid ≤ 2 で足りる。
+  本実験の record は `cycles:u` = ユーザー空間のみ) を都度依頼する
 
 ## 妥当性への脅威
 
