@@ -1,0 +1,18 @@
+# started on Mon Jul 13 21:08:49 2026
+
+
+ Performance counter stats for process id '166316':
+
+      132705323872      cycles                                                                  (49.99%)
+      297659742832      instructions                     #    2.24  insn per cycle              (49.98%)
+       39825342840      branches                                                                (49.98%)
+         431019228      branch-misses                    #    1.08% of all branches             (49.99%)
+       39486104411      cache-references                                                        (50.00%)
+        5418751026      cache-misses                     #   13.72% of all cache refs           (50.01%)
+      133049352638      L1-dcache-loads                                                         (50.02%)
+       21348627215      L1-dcache-load-misses            #   16.05% of all L1-dcache accesses   (50.02%)
+        1281375142      dTLB-loads                                                              (50.01%)
+         100825690      dTLB-load-misses                 #    7.87% of all dTLB cache accesses  (50.00%)
+
+      42.134161165 seconds time elapsed
+

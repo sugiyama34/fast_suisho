@@ -1,0 +1,3 @@
+# perf 生データとエンジンログは大きい/環境依存のため git 管理外
+perf.data*
+engine_*.log
