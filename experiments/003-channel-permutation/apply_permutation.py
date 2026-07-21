@@ -6,8 +6,10 @@
 - 全 9 スタックの fc_0 weights (8, 1024) の入力列を idx で置換
 - 他は一切変更しない (hash / arch 文字列 / fc_1 / fc_2 は元のバイト列のまま)
 
-書き出し前に、ランダム入力に対する fc_0 出力の代数一致 (W_new @ z[idx] == W @ z) を
-全スタックで確認する。最終的な正しさは検証用固定局面での評価値完全一致で担保する。
+書き出し前に、ランダム accumulator に対して pairwise-mul → fc_0 をモデル通りに
+シミュレートし、置換前後で出力が一致することを全スタックで確認する
+(FT 側の列置換と fc_0 側の列置換のペア対応 (j, j+512) が食い違っていれば不一致になる)。
+最終的な正しさは検証用固定局面での評価値完全一致で担保する。
 
 usage: apply_permutation.py --nn ../suisho11/nn.bin --perm perm.npy --out /path/to/out/nn.bin
 """
@@ -35,15 +37,27 @@ def main() -> None:
     model = io.parse_file(args.nn)
     ft = model.feature_transformer
 
-    # 代数チェック: 置換前の fc_0 で計算した出力と、置換後の fc_0 に置換後入力を
-    # 与えた出力が一致すること
+    # 等価性チェック: ランダム accumulator (視点ごと 1024ch) から pairwise-mul →
+    # fc_0 をモデル通りに計算し、「元の重み」と「FT 列置換後の accumulator +
+    # fc_0 列置換後の重み」で出力が一致することを確認する。
+    # 注意: 単なる W[:, idx] @ z[idx] == W @ z は任意の置換で恒真なので検証にならない。
+    # pairwise-mul を挟むことで、FT 側 (ペア j, j+512 を同時に動かす) と fc_0 側の
+    # 置換のペア対応が食い違っていれば不一致として検出される
+    def pairwise(acc: np.ndarray) -> np.ndarray:
+        u = np.clip(acc[:512], 0, 127)
+        v = np.clip(acc[512:], 0, 127)
+        return (u * v) // 128
+
     rng = np.random.default_rng(0)
-    z = rng.integers(0, 127, size=1024, dtype=np.int64)
-    z[rng.random(1024) < 0.6] = 0  # 実際の入力同様スパースに
+    acc_stm = rng.integers(-300, 300, size=1024).astype(np.int64)
+    acc_opp = rng.integers(-300, 300, size=1024).astype(np.int64)
+    z_ref = np.concatenate([pairwise(acc_stm), pairwise(acc_opp)])
+    # FT 列置換後の accumulator は acc[idx] (両視点とも同じ σ)
+    z_new = np.concatenate([pairwise(acc_stm[idx]), pairwise(acc_opp[idx])])
     for k, stack in enumerate(model.layer_stacks):
         w = stack.fc_0.weights.astype(np.int64)
-        ref = w @ z
-        new = w[:, idx] @ z[idx]
+        ref = w @ z_ref
+        new = w[:, idx] @ z_new
         assert np.array_equal(ref, new), f"fc_0 equivalence check failed at stack {k}"
 
     ft.biases = ft.biases[idx]
