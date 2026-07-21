@@ -1,0 +1,9 @@
+engine        : /home/sugiyama/engines/profile-002/YaneuraOu-by-gcc
+engine sha256 : 215f0e758840620c24516d56f3042e9a987bc890923f7575639886cce0bccd4c
+eval sha256   : a78b7f889843037d344f482623b3febd124ead5c1f34f134d9f1c2c78cd0f829
+conditions    : movetime 10000ms x 4 positions, hash 1024MB, threads 16, sample 97Hz
+cpu           : AMD EPYC 7302 16-Core Processor
+governor      : schedutil / boost: 1
+paranoid      : 1
+loadavg(pre)  : 0.00 0.03 0.01
+date          : 2026-07-21T18:57:09+09:00

@@ -1,0 +1,18 @@
+# started on Tue Jul 21 18:57:53 2026
+
+
+ Performance counter stats for process id '231531':
+
+     2041550221466      cycles                                                                  (50.00%)
+     4300020040914      instructions                     #    2.11  insn per cycle              (50.00%)
+      575213639473      branches                                                                (50.00%)
+        6456371838      branch-misses                    #    1.12% of all branches             (50.00%)
+      534636605584      cache-references                                                        (50.00%)
+       81442237941      cache-misses                     #   15.23% of all cache refs           (50.00%)
+     1929157613194      L1-dcache-loads                                                         (50.00%)
+      303433409741      L1-dcache-load-misses            #   15.73% of all L1-dcache accesses   (50.00%)
+       19397555708      dTLB-loads                                                              (50.00%)
+        1683956443      dTLB-load-misses                 #    8.68% of all dTLB cache accesses  (50.00%)
+
+      42.266115397 seconds time elapsed
+
