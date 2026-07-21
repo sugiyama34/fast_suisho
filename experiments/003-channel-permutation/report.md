@@ -1,7 +1,7 @@
 # 003-channel-permutation: FT 出力チャネル並べ替え (activation-sparsity permutation)
 
-日付: 2026-07-21 (開始)
-状態: 🏃‍♀️ 進行中
+日付: 2026-07-21
+状態: ✅ 完了
 
 ## 仮説
 
@@ -111,8 +111,92 @@ NPS への予測効果は **+1.5% 程度** (5.5% × 27.7%)
 
 ### NPS
 
-(🏃‍♀️ 計測中 — bench_orig.txt / bench_perm.txt)
+`bench_nps.sh` (baseline-000 エンジン, movetime 10s × 4局面 × REPEATS=9,
+`bench_orig.txt` / `bench_perm.txt`):
+
+| threads | オリジナル | permuted | Δ |
+|---|---|---|---|
+| 1 | 468,822 (464,616–475,486) | 472,288 (468,459–477,626) | **+0.74%** |
+| 16 | 7,211,686 (7,134,803–7,260,723) | 7,203,284 (7,121,315–7,251,249) | −0.12% |
+
+中央値差 +0.74% (1T) は run 間ばらつき (±1.5%) の内側なので、時間変動をペア内で
+相殺する**交互対計測** (`bench_paired.sh`, 12 ペア × 1T movetime 10s,
+`bench_paired.txt`) を追加実施:
+
+- ペア差の平均 **+0.38%** (SE 0.38, 95% CI おおよそ −0.5〜+1.2%)、中央値 **+0.70%**、
+  正のペア 7/12 — **統計的に有意ではない**
+- ペア差の標準偏差は 1.3% で、ペア化してもばらつきは大きい (bench の movetime 方式は
+  実行ごとのノード数変動が支配的)。+0.4% 級の効果を有意に検出するには
+  ~100 ペア (2 時間超) が必要であり、開発機スクリーニングとしては打ち切りが妥当
 
 ## 結論
 
-(未記入)
+1. **等価変換は完全に成立** — 決定的探索 500 局面で diff ゼロ (評価値完全一致)。
+   weights-only パイプライン (NNUEModel 編集 → serialize → 検証) の練習台としての
+   目的は達成
+2. **機構レベルの効果は予測どおり確定**: fc_0 のチャンク非ゼロ率 0.7436 → 0.5376
+   (相対 −27.7%)。permuted ネットでの実測が最適化時の予測と一致
+3. **NPS 効果は +0.4〜0.7% 程度 (1T) で、開発機の計測ノイズと同水準**。
+   experiment-002 の上限見積り (+2%)・本レポートの予測 (+1.5%) と矛盾しない小効果。
+   find_nnz 走査 (1.3%) は削減されないこと、スキップで浮くのは積和スループットの
+   一部であることから、実効がこの水準に留まるのは想定内
+4. **採用判断**: 精度リスクゼロ・NPS は非負 (16T でも差なし) なので、
+   **今後のネットは最終パッケージング工程として σ を適用する価値がある**。
+   ただし開発機での単独効果は小さいため、c8a (AVX-512, 192 コア) での再計測を
+   もって最終判断とする。σ の合成は任意のネットに対して `apply_permutation.py` を
+   流すだけで済む (活性化統計はネットが変われば要再収集)
+5. **今後の実験への含意**: finny tables (フェーズ2 項目 1) や FT 幅縮小の後段でも
+   fc_0 の相対コストが変わるため、σ 適用の期待値はそのとき再評価する
+
+## 妥当性への脅威
+
+- bench の 4 局面と統計収集の互角局面 500 点は分布が異なる (むしろ汎化の確認になって
+  いるが、bench 局面に過適合した σ ではないことに注意)
+- 順次実行の bench_orig/bench_perm には時間順の系統誤差 (温度・周波数) が乗りうる。
+  交互対計測で補ったが、いずれも 10 分オーダーの計測であり ±0.4% 級の結論が限界
+- 開発機 (Zen 2 AVX2) の結果であり、c8a (Zen 5 AVX-512) では find_nnz が
+  `_mm512_cmpgt_epi32_mask` 系になるなどコスト構造が変わる
+
+## 再現手順
+
+```sh
+# 1. 計測ビルド (パッチ適用 → ビルド → revert)
+cd ../YaneuraOu && patch -p1 < ../fast_suisho/experiments/003-channel-permutation/ft_stats.patch
+cd source && make -j16 normal YANEURAOU_EDITION=YANEURAOU_ENGINE_SFNN_halfka2_1024-7-64-k3k3 \
+     COMPILER=g++ TARGET_CPU=AVX2 PYTHON=python3
+cp YaneuraOu-by-gcc ~/engines/ftstats-003/YaneuraOu-ftstats
+cd .. && patch -R -p1 < ../fast_suisho/experiments/003-channel-permutation/ft_stats.patch
+
+# 2. 活性化統計収集 (Threads=1, 16 call に 1 サンプル)
+cd ../fast_suisho
+FT_STATS_FILE=/tmp/masks_orig.bin FT_STATS_EVERY=16 .venv/bin/python \
+  experiments/003-channel-permutation/usi_drive.py --engine ~/engines/ftstats-003/YaneuraOu-ftstats \
+  --evaldir ~/suisho11 --sfens experiments/003-channel-permutation/sfens_stats_500.txt \
+  --mode search --nodes 20000
+
+# 3. σ 最適化 → 適用
+.venv/bin/python experiments/003-channel-permutation/optimize_permutation.py \
+  --masks /tmp/masks_orig.bin --out experiments/003-channel-permutation/perm.npy --swap-iters 60000
+PYTHONPATH=. .venv/bin/python experiments/003-channel-permutation/apply_permutation.py \
+  --nn ~/suisho11/nn.bin --perm experiments/003-channel-permutation/perm.npy \
+  --out ~/engines/perm-003/nn.bin
+
+# 4. 検証 (評価値完全一致 = 決定的探索 diff、機構確認、NPS)
+.venv/bin/python experiments/003-channel-permutation/usi_drive.py --engine ~/engines/baseline-000/YaneuraOu-by-gcc \
+  --evaldir ~/suisho11 --sfens experiments/003-channel-permutation/sfens_verify_500.txt \
+  --mode searchlog --nodes 50000 > /tmp/searchlog_orig.txt   # EvalDir を差し替えてもう一度 → diff
+ENGINE=~/engines/baseline-000/YaneuraOu-by-gcc EVALDIR=~/engines/perm-003 \
+  THREADS_LIST="1 16" REPEATS=9 ./experiments/000-baseline/bench_nps.sh 10000
+./experiments/003-channel-permutation/bench_paired.sh 12 10000
+```
+
+## アーティファクト fingerprint (sha256)
+
+```
+a78b7f889843037d344f482623b3febd124ead5c1f34f134d9f1c2c78cd0f829  ../suisho11/nn.bin (オリジナル)
+738cbaa230363e6adfc96e6c7fa428f963aab4bd1db6592868885b93ba9ae35d  ~/engines/perm-003/nn.bin (permuted)
+312b1368348e83fe546f45983e49bd354636609b1ad4857a033c4ab0e4aafff6  ~/engines/baseline-000/YaneuraOu-by-gcc (検証・NPS 用)
+87857ca87f8674f4722812d9ac8608f23503fb4d1b8e651b0371db8527f82240  ~/engines/ftstats-003/YaneuraOu-ftstats (計測ビルド)
+1f02713df34d11e889ca52b047141e2495eb4515ecd915d30cdb7c7c3d070455  masks_orig.bin (68 MB, 非コミット)
+e4e82847ae9c4cc9f3ac4083e68a618294bf1e4066f645f57214cbfb9a315923  masks_perm.bin (68 MB, 非コミット)
+```

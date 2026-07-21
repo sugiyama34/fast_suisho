@@ -1,0 +1,23 @@
+engine        : /home/sugiyama/engines/baseline-000/YaneuraOu-by-gcc (312b1368348e83fe…)
+eval A (orig) : /home/sugiyama/suisho11/nn.bin (a78b7f889843037d…)
+eval B (perm) : /home/sugiyama/engines/perm-003/nn.bin (738cbaa230363e6a…)
+conditions    : 1 thread, movetime 10000ms x 4 positions, hash 1024MB, 12 pairs (interleaved)
+cpu           : AMD EPYC 7302 16-Core Processor
+governor      : schedutil / boost: 1
+loadavg(pre)  : 6.67 10.26 7.55
+
+pair   nps_orig     nps_perm     delta_pct
+1      466438       465629       -0.173%
+2      466310       478196       +2.549%
+3      467303       471626       +0.925%
+4      471463       461885       -2.032%
+5      465622       464865       -0.163%
+6      465843       470547       +1.010%
+7      472244       474528       +0.484%
+8      466001       473873       +1.689%
+9      476326       467991       -1.750%
+10     465746       470107       +0.936%
+11     469268       474916       +1.204%
+12     470660       470356       -0.065%
+
+loadavg(post) : 1.00 1.36 3.26

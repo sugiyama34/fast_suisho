@@ -34,15 +34,15 @@
 
 着手順 (0 の残り → 1 を先行。効果が見込める順。2026-07-14 に experiment-002 の実測を反映して更新):
 
-0. 🏃‍♀️ **プロファイル取得と精度リスクゼロ系** (サーベイ §2.3, §2.7)
+0. ✅ **プロファイル取得と精度リスクゼロ系** (サーベイ §2.3, §2.7 — PGO/huge pages のみ ⏸ c8a 待ち)
    - ✅ `perf` によるコスト比率の確定 → **完了 (2026-07-13, `experiments/002-profile/`)**。
      実測: 評価関数 51.0% (FT refresh 30.1% / FT 差分更新 8.9% / fc_0 6.8% / その他 ~5%)。
      各手法の Amdahl 上限は experiment-002 レポート参照
-   - 🔜 FT 出力チャネル並べ替え (activation-sparsity permutation): 等価変換で精度損ゼロ、
-     weights-only (フェーズ1 の parser 完成が前提)。fc_0 sparse 実装のスキップ判定は
-     **連続 4ch 単位 (int32 チャンク)**、並べ替えの自由度は pairwise-mul のペア
-     (j, j+512) 単位と確認済み (experiment-002)。NPS 上限は +2% 程度と小さいが、
-     weights-only 加工パイプラインの練習台を兼ねて experiment-003 で実施
+   - ✅ FT 出力チャネル並べ替え (activation-sparsity permutation) → **完了 (2026-07-21,
+     `experiments/003-channel-permutation/`)**。等価変換 (評価値完全一致を決定的探索
+     500 局面の diff ゼロで確認)。fc_0 チャンク非ゼロ率 0.744 → 0.538 (−27.7%)、
+     NPS は 1T +0.4〜0.7% で計測ノイズと同水準 (予測上限 +1.5% と整合)。
+     今後のネットへの σ 適用は `apply_permutation.py` で合成可能。c8a で再計測予定
    - ⏸️ PGO / huge pages 等のビルド最適化: 採用する場合は**ベースラインにも適用して再計測**
      (ネットワーク手法の効果と混ぜない)。experiment-002 実測の dTLB ミス 2.4M/s から
      huge pages の期待値は数% 級。**実施は本番環境 (AWS c8a.metal-48xl) 側の計測と
@@ -50,7 +50,7 @@
      TLB 挙動 (Zen 2 と Zen 5 で大きく異なる) もマシン固有であり、開発機で計測しても
      本番に持ち越せないため。c8a ベースラインセッション (AVX-512 edition ビルド +
      スレッドスケーリング曲線 + プロファイル取得) の際に合わせて評価する
-1. ⬜ **AccumulatorCache (finny tables) の移植** — experiment-002 の実測を受け 2026-07-14 に追加・昇格
+1. 🔜 **AccumulatorCache (finny tables) の移植** — experiment-002 の実測を受け 2026-07-14 に追加・昇格
    - FT refresh が全サイクルの 30.1% と最大費目 (差分更新の 3.4 倍)。HalfKA 系は
      玉移動のたびに視点丸ごと再計算するため、玉が動く中盤で refresh が支配的になる
    - 玉マス等のバケットごとに accumulator をキャッシュし、refresh を「キャッシュ済み
