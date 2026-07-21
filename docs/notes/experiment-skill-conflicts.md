@@ -9,7 +9,7 @@
 | 項目 | スキルの指定 | 本リポジトリの規約 (優先) |
 |---|---|---|
 | フォルダ名 | `experiments/<YYYY-MM-DD>_<slug>/` | `experiments/NNN-name/` (連番。PLAN 記載) |
-| ファイル構成 | `hypothesis.md` / `metadata.json` / `config/` / `command.md` / `logs/` / `metrics/` / `figures/` / `report.md` に分割 | `report.md` 1 本に仮説・セットアップ・再現手順・結果・結論を集約し、スクリプトと成果物 (png / npy / txt) を同フォルダに直置き (000/001 の既存形式) |
+| ファイル構成 | `hypothesis.md` / `metadata.json` / `config/` / `command.md` / `logs/` / `metrics/` / `figures/` / `report.md` に分割 | `report.md` 1 本に仮説・セットアップ・再現手順・結果・結論を集約し、スクリプトと成果物 (png / npy / txt) を同フォルダに直置き (experiment-000 / experiment-001 の既存形式) |
 | 言語 | (英語想定) | ドキュメントは日本語 (CLAUDE.md) |
 | 実験の型 | 訓練/評価ラン (seed 分散、複数 seed 前提) | フェーズ2 前半は NPS 計測・プロファイル・等価変換が中心。seed ではなく run 間分散 (±1.5%) と統計プロトコル (フェーズ3 の pentanomial SPRT) で扱う |
 | メタデータ | `metadata.json` (commit, dirty flag, HW) | sha256 fingerprint 方式 (000-baseline 参照): エンジン/nn.bin の sha256 + ビルド条件 + governor/負荷条件を report.md とスクリプトのヘッダ出力に記録 |
