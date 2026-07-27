@@ -164,11 +164,14 @@ credential masking は**ユーザーレベル設定でのみ有効** (プロジ�
 - [x] SA キーでの run 削除の実測: **削除できる** (自分で作った捨て run に対し成功)。
       エージェントの全 run は SA 作成のため、実質「チーム内の agent run は全て削除可能」
       が確定した blast radius
-- [x] `WANDB_USER_EMAIL` 帰属付き `run.alert()` → 送信は成功するが**初回は不達**。
-      UI で wandb.alert() の Email トグルが ON であることを確認済み
-      (現 UI では「Scriptable run alerts」ではなく **wandb.alert()** 行)。
-      `alert_retest.py` で再送済み — 受信確認待ち。不達確定なら W&B の推奨どおり
-      **project Automations** (Run status change トリガー + Slack/webhook) へ移行
+- [x] `WANDB_USER_EMAIL` 帰属付き `run.alert()` → **受信確認済み (2026-07-27)**。
+      service account run からでも alert は届く。必要条件: (1) スクリプト側で
+      `WANDB_USER_EMAIL` にチーム member のメールを設定 (tools/wandb_utils.py の
+      alert 利用時の規約)、(2) User Settings → Alerts で **wandb.alert()** 行の
+      Email トグルを ON (現 UI 名。旧称「Scriptable run alerts」)。
+      初回テストの不達は再現せず (遅延または迷惑メール分類の可能性)。
+      より高機能な通知が欲しくなったら project Automations (Run status change +
+      Slack/webhook) が W&B の推奨
 - [x] hook ガード: 許可/ブロックを `experiments/004-wandb-verify/hook_tests.sh` で
       再現可能にした (迂回ケースを含む 23 ケース、レビュー指摘の修正適用後に全 PASS)
 
@@ -178,7 +181,7 @@ credential masking は**ユーザーレベル設定でのみ有効** (プロジ�
 |---|---|
 | Pro プランでの service account 提供 | **確認済 (2026-07-27)**: Pro で team-scoped service account を作成できた |
 | service account の run 削除権限 | **実測済 (2026-07-27)**: 自分の run を削除**できる** (§4)。artifact 削除は未実測 |
-| service account run からの `wandb.alert()` 配信 | 送信は成功 (`WANDB_USER_EMAIL` 帰属付き)。**受信確認待ち**。不達なら W&B Automations を使う |
+| service account run からの `wandb.alert()` 配信 | **解決 (2026-07-27)**: `WANDB_USER_EMAIL` 帰属 + wandb.alert() Email トグル ON で受信確認済み (§4) |
 | credential masking の非発効 (→ **解決済: 原因特定**) | 根本原因は socat 未インストールによる **sandbox 全体の無効化** (debug ログで確認)。socat 導入までの暫定運用と緩和策: (1) SA キーを露出想定で**定期ローテーション** (Team settings → Service Accounts で再生成、1 分)、(2) hook ガードが第一防衛線 (sandbox 非依存で有効)、(3) ロック済みファイルの Bash 経由書き込み保護 (denyWrite) も不作動な点に注意、(4) socat 導入後は `sandbox.failIfUnavailable: true` で再発防止 |
 | SaaS のレート制限の具体値 | 非公開 (2023 年の旧値: 無料 50 req/分, 有料 200 req/分)。public API 呼び出しは 1 秒以上間隔を空ける |
 
