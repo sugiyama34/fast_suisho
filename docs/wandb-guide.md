@@ -76,12 +76,14 @@ credential masking は**ユーザーレベル設定でのみ有効** (プロジ�
 
 - `tlsTerminate: {}` が無いと masking は fail-closed (sentinel がサーバーに届き認証失敗)
 - `*.wandb.ai` は apex (`wandb.ai` 本体) を含まないため両方列挙する
-- ⚠️ **credential masking は 2026-07-27 時点で発効していない** (v2.1.220)。settings の
-  `env` ブロック経由・シェル環境経由の両方で実測したが、sandbox 内に実キーが見えた。
-  一方 `network.allowedDomains` は同じ設定ファイルから正しく効いている (許可外ドメインは
-  遮断を確認) ため、設定の書き方ではなく Claude Code 側の不具合の可能性が高い。
-  `claude --debug` / `/doctor` での調査と upstream への issue 報告を推奨。
-  発効しない間、キー漏えい耐性は他の防御層 (SA スコープ + hook + denyRead) に依存する
+- ⚠️ **2026-07-27 時点: sandbox 自体が無効** — 根本原因は **socat 未インストール**
+  (debug ログに `sandbox disabled: ... socat not installed`)。bwrap はあるが proxy に
+  socat が必要で、欠けると Claude Code は sandbox 全体を静かに無効化する
+  (masking / network 分離 / filesystem denyRead・denyWrite がすべて不作動)。
+  **対処**: システム管理者に `apt install socat` を依頼 → 再起動 → sentinel 検証。
+  **再発防止**: socat 導入後に `sandbox.failIfUnavailable: true` を settings に追加し、
+  依存欠落時は静かに劣化せず起動失敗させる。
+  それまでの暫定運用はリスク受容の上で sandbox なし (§5 の緩和策参照)
 
 ### 2.3 プロジェクト `.claude/settings.json` への差分
 
@@ -147,11 +149,11 @@ credential masking は**ユーザーレベル設定でのみ有効** (プロジ�
 
 ## 4. 検証チェックリスト (2026-07-27 実施。スクリプト: `experiments/004-wandb-verify/`)
 
-- [ ] **NG** sandbox 内の `$WANDB_API_KEY` が**実キーのまま** (sentinel になっていない)。
-      settings `env` 経由・シェル環境経由の両方で再現。network 分離は有効
-      (許可外ドメイン遮断を確認) なので Claude Code 側の不具合の可能性が高い (§2.2)。
-      他の防御層 (SA スコープ, hook, env 固定) は有効なため運用は開始可能だが、
-      キー漏えい耐性は未達
+- [ ] **NG** `$WANDB_API_KEY` が実キーのまま — 根本原因判明: **socat 未インストールで
+      sandbox 全体が無効** (§2.2)。masking だけでなく network 分離・filesystem 保護も
+      不作動 (当初「network 分離は有効」と見えたのは VM 側 egress 制限の誤認)。
+      socat 導入 + 再起動後に再検証する。それまで sandbox なし運用をリスク受容で継続
+      (キー保護は SA スコープ + hook + 定期ローテーションに依存)
 - [x] `init_run()` でログ → `suisho/suisho-test` に run 出現
       (https://wandb.ai/suisho/suisho-test/runs/a1ge23zd)
 - [x] SA キーで他 entity への書き込み → 正しく拒否 (WandbApiFailedError)
@@ -169,7 +171,7 @@ credential masking は**ユーザーレベル設定でのみ有効** (プロジ�
 | Pro プランでの service account 提供 | **確認済 (2026-07-27)**: Pro で team-scoped service account を作成できた |
 | service account の run 削除権限 | **実測済 (2026-07-27)**: 自分の run を削除**できる** (§4)。artifact 削除は未実測 |
 | service account run からの `wandb.alert()` 配信 | 送信は成功 (`WANDB_USER_EMAIL` 帰属付き)。**受信確認待ち**。不達なら W&B Automations を使う |
-| credential masking の非発効 | sandbox 内で実キーが見えている (§4)。`env` ブロック経由・シェル環境経由の両方で再現。`/proc/$$/environ` の実測で **exec 時点から実キー** (sentinel 置換が一度も行われていない) を確認、一方 network 分離 (proxy) は同一設定で有効。rc ファイルによる上書きでもない (Codex 相談で仮説を網羅的に排除)。残る候補は feature gating / build regression / 設定の silent unparse — upstream 報告を推奨。**対処: masking は無いものとして扱い、露出の可能性がある SA キーは随時ローテーションする** |
+| credential masking の非発効 (→ **解決済: 原因特定**) | 根本原因は socat 未インストールによる **sandbox 全体の無効化** (debug ログで確認)。socat 導入までの暫定運用と緩和策: (1) SA キーを露出想定で**定期ローテーション** (Team settings → Service Accounts で再生成、1 分)、(2) hook ガードが第一防衛線 (sandbox 非依存で有効)、(3) ロック済みファイルの Bash 経由書き込み保護 (denyWrite) も不作動な点に注意、(4) socat 導入後は `sandbox.failIfUnavailable: true` で再発防止 |
 | SaaS のレート制限の具体値 | 非公開 (2023 年の旧値: 無料 50 req/分, 有料 200 req/分)。public API 呼び出しは 1 秒以上間隔を空ける |
 
 ## 6. 将来の拡張 (フェーズ 2)
