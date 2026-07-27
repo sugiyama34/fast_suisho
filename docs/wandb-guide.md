@@ -27,7 +27,8 @@ Admin キーはチーム内の全削除権限を持つため。
    (sentinel 値に置換され、wandb 向け通信時のみ proxy が実キーを注入)
 3. **sandbox ネットワーク許可リスト**: wandb ドメインのみ追加許可
 4. **hook ガード** (`.claude/hooks/wandb-guard.sh`): `wandb login` / `wandb sweep` /
-   `wandb artifact delete` / `WANDB_*` 環境変数のインライン上書きをブロック
+   `wandb artifact delete` / `WANDB_API_KEY` `WANDB_ENTITY` `WANDB_PROJECT`
+   `WANDB_BASE_URL` `WANDB_RUN_ID` のインライン設定をブロック
 5. **env 固定**: `WANDB_ENTITY` / `WANDB_PROJECT` を settings.json の env で固定
 6. **コード規約**: 全スクリプトが `tools/wandb_utils.py` 経由でログ
    (新規 run id 強制、ローカル JSONL 二重記録、checkpoint TTL)
@@ -75,10 +76,12 @@ credential masking は**ユーザーレベル設定でのみ有効** (プロジ�
 
 - `tlsTerminate: {}` が無いと masking は fail-closed (sentinel がサーバーに届き認証失敗)
 - `*.wandb.ai` は apex (`wandb.ai` 本体) を含まないため両方列挙する
-- ⚠️ **キーは settings の `env` ブロックではなくシェル環境で渡すこと** (`~/.bashrc` 等で
-  `export WANDB_API_KEY=...` → Claude Code を起動)。2026-07-27 の実測で、`env` ブロック
-  経由のキーは masking が発効せず実キーが sandbox に見えた。公式ドキュメントはこの点に
-  言及がなく (undocumented limitation の可能性)、シェル環境経由が有効かは検証中 (§4/§5)
+- ⚠️ **credential masking は 2026-07-27 時点で発効していない** (v2.1.220)。settings の
+  `env` ブロック経由・シェル環境経由の両方で実測したが、sandbox 内に実キーが見えた。
+  一方 `network.allowedDomains` は同じ設定ファイルから正しく効いている (許可外ドメインは
+  遮断を確認) ため、設定の書き方ではなく Claude Code 側の不具合の可能性が高い。
+  `claude --debug` / `/doctor` での調査と upstream への issue 報告を推奨。
+  発効しない間、キー漏えい耐性は他の防御層 (SA スコープ + hook + denyRead) に依存する
 
 ### 2.3 プロジェクト `.claude/settings.json` への差分
 
@@ -120,7 +123,7 @@ credential masking は**ユーザーレベル設定でのみ有効** (プロジ�
 # ALLOWED_PATTERNS に追加
 # WandB: 同期・状態確認のみ許可 (bare / uv run 経由の両形。
 # login/sweep/削除系は wandb-guard.sh でもブロック)
-'^(uv run )?wandb sync( --sync-all| --clean| --id [a-zA-Z0-9]+)*( [A-Za-z0-9._/-]+)*$'
+'^(uv run )?wandb sync( --sync-all| --clean| --id [a-zA-Z0-9]+)*( [A-Za-z0-9._/][A-Za-z0-9._/-]*)*$'
 '^(uv run )?wandb (status|--version)$'
 # 実験スクリプトの実行 (experiments/NNN-name/*.py)
 '^uv run python experiments/[0-9]{3}-[a-z0-9-]+/[A-Za-z0-9._-]+\.py( [A-Za-z0-9._/=,-]+)*$'
@@ -132,7 +135,8 @@ credential masking は**ユーザーレベル設定でのみ有効** (プロジ�
 - **`wandb login` 禁止** (~/.netrc に平文永続化されるため)。キーは masking 経由のみ
 - **sweep 禁止**: `WANDB_MODE` を無視してクラウド同期する既知バグあり
   ([wandb/wandb#6234](https://github.com/wandb/wandb/issues/6234))
-- 動作確認 (smoke test) は `init_run(..., smoke=True)` → mode="disabled" で完全 no-op
+- 動作確認 (smoke test) は `init_run(..., smoke=True)` → mode="disabled" でクラウドへは
+  完全 no-op (ローカル JSONL は書かれる。gitignore 済み)
 - run id は毎回新規 (`WANDB_RUN_ID` の再利用は resume 上書き事故のもと)
 - メトリクス分析はクラウド API ではなく**ローカル JSONL** (`experiments/*/metrics-*.jsonl`)
   を読む (レート制限回避 + 同期遅延の影響なし)
@@ -144,8 +148,10 @@ credential masking は**ユーザーレベル設定でのみ有効** (プロジ�
 ## 4. 検証チェックリスト (2026-07-27 実施。スクリプト: `experiments/004-wandb-verify/`)
 
 - [ ] **NG** sandbox 内の `$WANDB_API_KEY` が**実キーのまま** (sentinel になっていない)。
-      credential masking が発効していない — 原因調査中。他の防御層 (SA スコープ,
-      hook, env 固定) は有効なため運用は開始可能だが、キー漏えい耐性は未達
+      settings `env` 経由・シェル環境経由の両方で再現。network 分離は有効
+      (許可外ドメイン遮断を確認) なので Claude Code 側の不具合の可能性が高い (§2.2)。
+      他の防御層 (SA スコープ, hook, env 固定) は有効なため運用は開始可能だが、
+      キー漏えい耐性は未達
 - [x] `init_run()` でログ → `suisho/suisho-test` に run 出現
       (https://wandb.ai/suisho/suisho-test/runs/a1ge23zd)
 - [x] SA キーで他 entity への書き込み → 正しく拒否 (WandbApiFailedError)
@@ -153,7 +159,8 @@ credential masking は**ユーザーレベル設定でのみ有効** (プロジ�
       エージェントの全 run は SA 作成のため、実質「チーム内の agent run は全て削除可能」
       が確定した blast radius
 - [x] `WANDB_USER_EMAIL` 帰属付き `run.alert()` → 送信は成功。**配信 (受信) はユーザー確認待ち**
-- [x] hook ガード: 許可/ブロック 12 ケースをテスト済み (実装時)
+- [x] hook ガード: 許可/ブロックを `experiments/004-wandb-verify/hook_tests.sh` で
+      再現可能にした (迂回ケースを含む 24 ケース)
 
 ## 5. 未確定事項 (2026-07-27 時点)
 
@@ -162,7 +169,7 @@ credential masking は**ユーザーレベル設定でのみ有効** (プロジ�
 | Pro プランでの service account 提供 | **確認済 (2026-07-27)**: Pro で team-scoped service account を作成できた |
 | service account の run 削除権限 | **実測済 (2026-07-27)**: 自分の run を削除**できる** (§4)。artifact 削除は未実測 |
 | service account run からの `wandb.alert()` 配信 | 送信は成功 (`WANDB_USER_EMAIL` 帰属付き)。**受信確認待ち**。不達なら W&B Automations を使う |
-| credential masking の非発効 | sandbox 内で実キーが見えている (§4)。settings の `env` でキーを渡していることが原因の可能性 — 調査中 |
+| credential masking の非発効 | sandbox 内で実キーが見えている (§4)。`env` ブロック経由・シェル環境経由の両方で再現し、network 分離は有効 → Claude Code 側の不具合の疑い。upstream 報告を推奨 |
 | SaaS のレート制限の具体値 | 非公開 (2023 年の旧値: 無料 50 req/分, 有料 200 req/分)。public API 呼び出しは 1 秒以上間隔を空ける |
 
 ## 6. 将来の拡張 (フェーズ 2)

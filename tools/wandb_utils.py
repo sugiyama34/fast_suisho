@@ -36,6 +36,9 @@ from typing import Any, Iterator
 DEFAULT_ENTITY = "suisho"
 DEFAULT_PROJECT = "suisho-test"  # 検証完了後に本番 project 名へ切り替える
 
+# ローカル JSONL の出力先を CWD に依存させないためのリポジトリルート
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
 # 中間 checkpoint artifact の保持期間 (best/final は無期限)
 INTERMEDIATE_CKPT_TTL_DAYS = 14
 
@@ -62,19 +65,22 @@ class RunHandle:
         self._jsonl.flush()
         self._run.log(metrics, step=step)
 
-    def log_checkpoint(self, path: Path, *, best: bool = False, name: str | None = None) -> None:
-        """checkpoint を artifact として記録する。best=False は TTL 付き。"""
+    def log_checkpoint(
+        self, path: Path, *, best: bool = False, final: bool = False, name: str | None = None
+    ) -> None:
+        """checkpoint を artifact として記録する。best / final 以外は TTL 付き。"""
         import wandb
 
         artifact = wandb.Artifact(
             name=name or f"{self._run.name}-ckpt",
             type="checkpoint",
-            metadata={"best": best},
+            metadata={"best": best, "final": final},
         )
-        if not best:
+        if not (best or final):
             artifact.ttl = timedelta(days=INTERMEDIATE_CKPT_TTL_DAYS)
         artifact.add_file(str(path))
-        self._run.log_artifact(artifact, aliases=["best"] if best else None)
+        aliases = (["best"] if best else []) + (["final"] if final else [])
+        self._run.log_artifact(artifact, aliases=aliases or None)
 
     def alert(self, title: str, text: str) -> None:
         """学習発散等の通知。service account run では届かない可能性あり
@@ -114,7 +120,7 @@ def init_run(
     mode = "disabled" if smoke else os.environ.get("WANDB_MODE", "online")
     run_name = f"{experiment}-{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
 
-    log_dir = log_dir or Path("experiments") / experiment
+    log_dir = log_dir or REPO_ROOT / "experiments" / experiment
     log_dir.mkdir(parents=True, exist_ok=True)
     jsonl_path = log_dir / f"metrics-{run_name}.jsonl"
 
@@ -132,6 +138,14 @@ def init_run(
     handle = RunHandle(run, jsonl_path)
     try:
         yield handle
-    finally:
+    except BaseException:
+        # 本文の例外は W&B 上でも失敗 (crashed) として記録する
+        try:
+            run.finish(exit_code=1)
+        finally:
+            handle.close()
+        raise
+    try:
         run.finish()
+    finally:
         handle.close()
