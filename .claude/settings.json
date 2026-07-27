@@ -209,6 +209,9 @@
     "allowUnsandboxedCommands": false,
     "filesystem": {
       "allowWrite": [
+        "~/.cache/uv/**",
+        "~/.cache/wandb/**",
+        "~/.config/wandb/**",
         "~/.claude/plugins/data/codex-openai-codex/**",
         "~/.codex/models_cache.json",
         "~/.codex/tmp/**",
