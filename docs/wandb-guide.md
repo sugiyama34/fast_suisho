@@ -76,14 +76,18 @@ credential masking は**ユーザーレベル設定でのみ有効** (プロジ�
 
 - `tlsTerminate: {}` が無いと masking は fail-closed (sentinel がサーバーに届き認証失敗)
 - `*.wandb.ai` は apex (`wandb.ai` 本体) を含まないため両方列挙する
-- ⚠️ **2026-07-27 時点: sandbox 自体が無効** — 根本原因は **socat 未インストール**
-  (debug ログに `sandbox disabled: ... socat not installed`)。bwrap はあるが proxy に
-  socat が必要で、欠けると Claude Code は sandbox 全体を静かに無効化する
-  (masking / network 分離 / filesystem denyRead・denyWrite がすべて不作動)。
-  **対処**: システム管理者に `apt install socat` を依頼 → 再起動 → sentinel 検証。
-  **再発防止**: socat 導入後に `sandbox.failIfUnavailable: true` を settings に追加し、
-  依存欠落時は静かに劣化せず起動失敗させる。
-  それまでの暫定運用はリスク受容の上で sandbox なし (§5 の緩和策参照)
+- ⚠️ **2026-07-27 時点: sandbox は無効のまま** — 障害は 2 段階あった:
+  1. **socat 未インストール** → Claude Code が sandbox 全体を静かに無効化
+     (debug ログ `sandbox disabled: ... socat not installed` のみ)。socat 導入で解消
+  2. socat 導入後、**Ubuntu の AppArmor 制限**
+     (`kernel.apparmor_restrict_unprivileged_userns = 1`) により bwrap の
+     namespace 作成が `Permission denied` で失敗 → 全 Bash コマンドが実行不能に
+  **対処**: システム管理者に bwrap 専用 AppArmor プロファイルの追加を依頼中
+  (`/etc/apparmor.d/bwrap` に `userns,` 許可 + `apparmor_parser -r`。
+  管理者側の確認コマンド: `bwrap --ro-bind / / true && echo OK`)。
+  それまで sandbox 無効でリスク受容運用 (§5 の緩和策参照)。
+  **解消後の手順**: sandbox 有効化 → sentinel 検証 → wandb run 疎通確認 →
+  `sandbox.failIfUnavailable: true` を追加して静かな劣化の再発を防止
 
 ### 2.3 プロジェクト `.claude/settings.json` への差分
 
@@ -160,9 +164,13 @@ credential masking は**ユーザーレベル設定でのみ有効** (プロジ�
 - [x] SA キーでの run 削除の実測: **削除できる** (自分で作った捨て run に対し成功)。
       エージェントの全 run は SA 作成のため、実質「チーム内の agent run は全て削除可能」
       が確定した blast radius
-- [x] `WANDB_USER_EMAIL` 帰属付き `run.alert()` → 送信は成功。**配信 (受信) はユーザー確認待ち**
+- [x] `WANDB_USER_EMAIL` 帰属付き `run.alert()` → 送信は成功するが**初回は不達**。
+      UI で wandb.alert() の Email トグルが ON であることを確認済み
+      (現 UI では「Scriptable run alerts」ではなく **wandb.alert()** 行)。
+      `alert_retest.py` で再送済み — 受信確認待ち。不達確定なら W&B の推奨どおり
+      **project Automations** (Run status change トリガー + Slack/webhook) へ移行
 - [x] hook ガード: 許可/ブロックを `experiments/004-wandb-verify/hook_tests.sh` で
-      再現可能にした (迂回ケースを含む 24 ケース)
+      再現可能にした (迂回ケースを含む 23 ケース、レビュー指摘の修正適用後に全 PASS)
 
 ## 5. 未確定事項 (2026-07-27 時点)
 
