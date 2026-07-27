@@ -18,3 +18,7 @@ __pycache__/
 
 # generated game records (対局で生成されるもの。互角局面集など curated な入力は games/ の外に置く)
 experiments/**/games/
+
+# wandb ローカル run データとメトリクス二重記録 (tools/wandb_utils.py が生成)
+wandb/
+experiments/**/metrics-*.jsonl
