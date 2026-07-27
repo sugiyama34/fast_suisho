@@ -163,6 +163,9 @@ Admin キーはチーム内の全削除権限を持つため。
       sentinel)、network 分離 **OK** (許可外ドメイン遮断)、filesystem 分離 **OK**
       (~/.cache への書き込み拒否を確認)。ただし masking は wandb SDK の
       クライアント側キー検証と非互換のため mask エントリは外して運用 (§2.2)
+- [x] **最終疎通確認 (2026-07-27)**: mask なし + network allowlist の本番構成で、
+      sandbox 内から run 作成成功 (suisho/suisho-test/czxp7opf)。`~/.cache/uv` 等の
+      allowWrite 追加により `uv run` も sandbox 内で正常動作。**導入完了**
 - [x] `init_run()` でログ → `suisho/suisho-test` に run 出現
       (https://wandb.ai/suisho/suisho-test/runs/a1ge23zd)
 - [x] SA キーで他 entity への書き込み → 正しく拒否 (WandbApiFailedError)
