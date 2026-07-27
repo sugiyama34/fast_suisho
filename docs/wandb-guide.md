@@ -169,7 +169,7 @@ credential masking は**ユーザーレベル設定でのみ有効** (プロジ�
 | Pro プランでの service account 提供 | **確認済 (2026-07-27)**: Pro で team-scoped service account を作成できた |
 | service account の run 削除権限 | **実測済 (2026-07-27)**: 自分の run を削除**できる** (§4)。artifact 削除は未実測 |
 | service account run からの `wandb.alert()` 配信 | 送信は成功 (`WANDB_USER_EMAIL` 帰属付き)。**受信確認待ち**。不達なら W&B Automations を使う |
-| credential masking の非発効 | sandbox 内で実キーが見えている (§4)。`env` ブロック経由・シェル環境経由の両方で再現し、network 分離は有効 → Claude Code 側の不具合の疑い。upstream 報告を推奨 |
+| credential masking の非発効 | sandbox 内で実キーが見えている (§4)。`env` ブロック経由・シェル環境経由の両方で再現。`/proc/$$/environ` の実測で **exec 時点から実キー** (sentinel 置換が一度も行われていない) を確認、一方 network 分離 (proxy) は同一設定で有効。rc ファイルによる上書きでもない (Codex 相談で仮説を網羅的に排除)。残る候補は feature gating / build regression / 設定の silent unparse — upstream 報告を推奨。**対処: masking は無いものとして扱い、露出の可能性がある SA キーは随時ローテーションする** |
 | SaaS のレート制限の具体値 | 非公開 (2023 年の旧値: 無料 50 req/分, 有料 200 req/分)。public API 呼び出しは 1 秒以上間隔を空ける |
 
 ## 6. 将来の拡張 (フェーズ 2)
