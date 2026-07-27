@@ -207,8 +207,12 @@
   "sandbox": {
     "enabled": true,
     "allowUnsandboxedCommands": false,
+    "failIfUnavailable": true,
     "filesystem": {
       "allowWrite": [
+        "~/.cache/uv/**",
+        "~/.cache/wandb/**",
+        "~/.config/wandb/**",
         "~/.claude/plugins/data/codex-openai-codex/**",
         "~/.codex/models_cache.json",
         "~/.codex/tmp/**",
