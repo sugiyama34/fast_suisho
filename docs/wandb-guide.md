@@ -15,7 +15,7 @@ service account のキーだけをエージェント側に渡す構成
 └── チーム suisho  (= entity。実験データはすべてここに蓄積)
     ├── project suisho-test  (検証用。検証完了後に本番 project へ移行)
     └── service account (team-scoped。シートを消費しない)
-          └── API キー → Claude Code の credential masking 経由でのみ使用
+          └── API キー → sandbox 有効環境でのみエージェントに供給
 ```
 
 ユーザー本人 (Admin) のキーはエージェントが到達できる環境に一切置かない。
@@ -25,9 +25,10 @@ Admin キーはチーム内の全削除権限を持つため。
 
 1. **アカウントスコープ**: service account はチーム外にアクセス不可。最悪ケースでも
    被害は専用チーム内の実験データに限定される (再生成可能、ローカルにも二重記録あり)
-2. **credential masking**: sandbox 内のプロセスはキーの実物を見られない
-   (sentinel 値に置換され、wandb 向け通信時のみ proxy が実キーを注入)
-3. **sandbox ネットワーク許可リスト**: wandb ドメインのみ追加許可
+2. **credential masking**: 現在は**不使用** — 機構自体は作動確認済みだが wandb SDK の
+   クライアント側キー検証と非互換 (§2.2)。upstream 改善待ち
+3. **sandbox ネットワーク許可リスト**: wandb ドメインのみ追加許可。masking 不使用でも
+   これによりキーは wandb ドメイン以外へ物理的に送信できない
 4. **hook ガード** (`.claude/hooks/wandb-guard.sh`): `wandb login` / `wandb sweep` /
    `wandb artifact delete` / `WANDB_API_KEY` `WANDB_ENTITY` `WANDB_PROJECT`
    `WANDB_BASE_URL` `WANDB_RUN_ID` のインライン設定をブロック
@@ -54,8 +55,7 @@ Admin キーはチーム内の全削除権限を持つため。
 
 ### 2.2 ユーザーレベル `~/.claude/settings.json`
 
-credential masking は**ユーザーレベル設定でのみ有効** (プロジェクト設定の mask 指定は
-無視される。Claude Code v2.1.199+、現環境は v2.1.220)。以下をマージする:
+現行の推奨設定 (masking は使わない — 理由は下記):
 
 ```json
 {
@@ -64,20 +64,15 @@ credential masking は**ユーザーレベル設定でのみ有効** (プロジ�
   },
   "sandbox": {
     "network": {
-      "tlsTerminate": {},
       "allowedDomains": ["wandb.ai", "*.wandb.ai"]
-    },
-    "credentials": {
-      "envVars": [
-        { "name": "WANDB_API_KEY", "mode": "mask", "injectHosts": ["api.wandb.ai"] }
-      ]
     }
   }
 }
 ```
 
-- `tlsTerminate: {}` が無いと masking は fail-closed (sentinel がサーバーに届き認証失敗)
 - `*.wandb.ai` は apex (`wandb.ai` 本体) を含まないため両方列挙する
+- masking を将来試す場合の参考: `credentials.envVars` の `mode: "mask"` 指定は
+  ユーザーレベル設定でのみ有効で、`network.tlsTerminate: {}` が必須 (v2.1.199+)
 - **sandbox 導入の経緯 (2026-07-27 解決)**: 障害は 2 段階あった —
   (1) socat 未インストール → Claude Code が sandbox 全体を静かに無効化、
   (2) socat 導入後も Ubuntu の AppArmor 制限
