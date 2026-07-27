@@ -1,12 +1,14 @@
-# WandB 運用ガイド (方式 B)
+# WandB 運用ガイド
 
 Claude Code がほぼ全自動で WandB に実験を記録するための設計・導入手順・運用規約。
 2026-07-27 の調査 (一次情報を検証済み) に基づく。
 
 ## 1. 設計概要
 
-**方式 B**: ユーザー本人の W&B Pro アカウント内に専用チームを作り、そのチームに
-スコープされた service account のキーだけをエージェント側に渡す。
+ユーザー本人の W&B Pro アカウント内に専用チームを作り、そのチームにスコープされた
+service account のキーだけをエージェント側に渡す構成
+(導入時の設計検討では「方式 B」と呼んでいた案。呼称は当時のチャット上の議論のみで
+使われたもので、本ガイドでは以後使わない)。
 
 ```
 ユーザーの W&B org (Pro, 100 GB/月)
@@ -76,18 +78,22 @@ credential masking は**ユーザーレベル設定でのみ有効** (プロジ�
 
 - `tlsTerminate: {}` が無いと masking は fail-closed (sentinel がサーバーに届き認証失敗)
 - `*.wandb.ai` は apex (`wandb.ai` 本体) を含まないため両方列挙する
-- ⚠️ **2026-07-27 時点: sandbox は無効のまま** — 障害は 2 段階あった:
-  1. **socat 未インストール** → Claude Code が sandbox 全体を静かに無効化
-     (debug ログ `sandbox disabled: ... socat not installed` のみ)。socat 導入で解消
-  2. socat 導入後、**Ubuntu の AppArmor 制限**
-     (`kernel.apparmor_restrict_unprivileged_userns = 1`) により bwrap の
-     namespace 作成が `Permission denied` で失敗 → 全 Bash コマンドが実行不能に
-  **対処**: システム管理者に bwrap 専用 AppArmor プロファイルの追加を依頼中
-  (`/etc/apparmor.d/bwrap` に `userns,` 許可 + `apparmor_parser -r`。
-  管理者側の確認コマンド: `bwrap --ro-bind / / true && echo OK`)。
-  それまで sandbox 無効でリスク受容運用 (§5 の緩和策参照)。
-  **解消後の手順**: sandbox 有効化 → sentinel 検証 → wandb run 疎通確認 →
-  `sandbox.failIfUnavailable: true` を追加して静かな劣化の再発を防止
+- **sandbox 導入の経緯 (2026-07-27 解決)**: 障害は 2 段階あった —
+  (1) socat 未インストール → Claude Code が sandbox 全体を静かに無効化、
+  (2) socat 導入後も Ubuntu の AppArmor 制限
+  (`kernel.apparmor_restrict_unprivileged_userns = 1`) で bwrap が起動不能。
+  システム管理者による対応で解消し、sentinel 置換・ネットワーク分離・
+  filesystem 分離の作動を実測確認済み
+- ⚠️ **credential masking は wandb SDK と非互換** (2026-07-27 実測):
+  sentinel 置換自体は作動するが、wandb SDK がキー形式を**クライアント側で検証**
+  (40 文字以上等) するため、sentinel が API リクエスト前に拒否され、proxy の
+  実キー注入まで到達しない。**当面 mask エントリは外して運用**する —
+  それでも network allowlist によりキーは wandb ドメイン以外へ送信できず、
+  sandbox なし運用より大幅に安全。Claude Code へ format-preserving sentinel の
+  feature request を報告予定
+- sandbox 有効時の必要設定: `sandbox.filesystem.allowWrite` に `~/.cache/uv/**`
+  (uv のロック取得に必要。無いと `uv run` が失敗する)。
+  依存欠落の静かな劣化を防ぐため `sandbox.failIfUnavailable: true` も推奨
 
 ### 2.3 プロジェクト `.claude/settings.json` への差分
 
@@ -139,8 +145,13 @@ credential masking は**ユーザーレベル設定でのみ有効** (プロジ�
 
 - ログは必ず `tools/wandb_utils.py` の `init_run()` 経由。`wandb.init()` 直接呼び出し禁止
 - **`wandb login` 禁止** (~/.netrc に平文永続化されるため)。キーは masking 経由のみ
-- **sweep 禁止**: `WANDB_MODE` を無視してクラウド同期する既知バグあり
-  ([wandb/wandb#6234](https://github.com/wandb/wandb/issues/6234))
+- **sweep は当面ブロック** (禁止理由はデータ容量ではない):
+  (1) sweeps は `WANDB_MODE` を無視してクラウド同期する既知バグがあり
+  ([wandb/wandb#6234](https://github.com/wandb/wandb/issues/6234))、現行の online
+  運用では通常 run に実害はないが、**smoke test (mode="disabled") 中でも sweep は
+  クラウドに書いてしまう**。(2) sweep が生成する run は `init_run()` の規約
+  (新規 run id 強制・ローカル JSONL 二重記録) を通らない。
+  将来 sweep を使いたくなったら、専用の規約を設計した上で hook のブロックを解除する
 - 動作確認 (smoke test) は `init_run(..., smoke=True)` → mode="disabled" でクラウドへは
   完全 no-op (ローカル JSONL は書かれる。gitignore 済み)
 - run id は毎回新規 (`WANDB_RUN_ID` の再利用は resume 上書き事故のもと)
@@ -153,11 +164,10 @@ credential masking は**ユーザーレベル設定でのみ有効** (プロジ�
 
 ## 4. 検証チェックリスト (2026-07-27 実施。スクリプト: `experiments/004-wandb-verify/`)
 
-- [ ] **NG** `$WANDB_API_KEY` が実キーのまま — 根本原因判明: **socat 未インストールで
-      sandbox 全体が無効** (§2.2)。masking だけでなく network 分離・filesystem 保護も
-      不作動 (当初「network 分離は有効」と見えたのは VM 側 egress 制限の誤認)。
-      socat 導入 + 再起動後に再検証する。それまで sandbox なし運用をリスク受容で継続
-      (キー保護は SA スコープ + hook + 定期ローテーションに依存)
+- [x] sandbox 有効化後の再検証 (2026-07-27): sentinel 置換 **OK** (exec 時点から
+      sentinel)、network 分離 **OK** (許可外ドメイン遮断)、filesystem 分離 **OK**
+      (~/.cache への書き込み拒否を確認)。ただし masking は wandb SDK の
+      クライアント側キー検証と非互換のため mask エントリは外して運用 (§2.2)
 - [x] `init_run()` でログ → `suisho/suisho-test` に run 出現
       (https://wandb.ai/suisho/suisho-test/runs/a1ge23zd)
 - [x] SA キーで他 entity への書き込み → 正しく拒否 (WandbApiFailedError)
@@ -182,7 +192,7 @@ credential masking は**ユーザーレベル設定でのみ有効** (プロジ�
 | Pro プランでの service account 提供 | **確認済 (2026-07-27)**: Pro で team-scoped service account を作成できた |
 | service account の run 削除権限 | **実測済 (2026-07-27)**: 自分の run を削除**できる** (§4)。artifact 削除は未実測 |
 | service account run からの `wandb.alert()` 配信 | **解決 (2026-07-27)**: `WANDB_USER_EMAIL` 帰属 + wandb.alert() Email トグル ON で受信確認済み (§4) |
-| credential masking の非発効 (→ **解決済: 原因特定**) | 根本原因は socat 未インストールによる **sandbox 全体の無効化** (debug ログで確認)。socat 導入までの暫定運用と緩和策: (1) SA キーを露出想定で**定期ローテーション** (Team settings → Service Accounts で再生成、1 分)、(2) hook ガードが第一防衛線 (sandbox 非依存で有効)、(3) ロック済みファイルの Bash 経由書き込み保護 (denyWrite) も不作動な点に注意、(4) socat 導入後は `sandbox.failIfUnavailable: true` で再発防止 |
+| credential masking (**決着 2026-07-27**) | 経緯: socat 欠落→AppArmor 制限→依存解消で sentinel 置換は作動。しかし **wandb SDK のクライアント側キー検証と非互換** (sentinel が 40 文字以上のキー形式チェックで拒否され proxy 注入に到達しない) のため mask は外して運用。sandbox の network/filesystem 分離は有効なので、キーは wandb ドメイン以外へ物理的に送信不能。SA キーの定期ローテーションは継続推奨。upstream へ format-preserving sentinel を要望予定 |
 | SaaS のレート制限の具体値 | 非公開 (2023 年の旧値: 無料 50 req/分, 有料 200 req/分)。public API 呼び出しは 1 秒以上間隔を空ける |
 
 ## 6. 将来の拡張 (フェーズ 2)

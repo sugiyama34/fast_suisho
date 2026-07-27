@@ -1,4 +1,4 @@
-"""WandB ロギングヘルパー (方式 B: 専用チーム + team-scoped service account で運用)。
+"""WandB ロギングヘルパー (専用チーム + team-scoped service account で運用)。
 
 設計・導入手順・運用規約の全体は docs/wandb-guide.md を参照。
 

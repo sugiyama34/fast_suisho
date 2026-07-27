@@ -2,7 +2,7 @@
 
 日付: 2026-07-27
 スクリプト: `verify.py` (チェックリスト A〜E), `delete_probe.py` (D の単発再実行)
-背景: docs/wandb-guide.md の方式 B 導入に伴う動作・権限の実測。
+背景: docs/wandb-guide.md の構成 (専用チーム + service account) 導入に伴う動作・権限の実測。
 
 ## 結果
 
