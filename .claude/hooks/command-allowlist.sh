@@ -182,7 +182,7 @@ ALLOWED_PATTERNS=(
 
   # WandB: 同期・状態確認のみ許可 (login/sweep/削除系は wandb-guard.sh でもブロック。
   # docs/wandb-guide.md 参照)。bare 実行と uv run 経由の両形を許可
-  '^(uv run )?wandb sync( --sync-all| --clean| --id [a-zA-Z0-9]+)*( [A-Za-z0-9._/-]+)*$'
+  '^(uv run )?wandb sync( --sync-all| --clean| --id [a-zA-Z0-9]+)*( [A-Za-z0-9._/][A-Za-z0-9._/-]*)*$'
   '^(uv run )?wandb (status|--version)$'
   # 実験スクリプトの実行 (experiments/NNN-name/*.py)
   '^uv run python experiments/[0-9]{3}-[a-z0-9-]+/[A-Za-z0-9._-]+\.py( [A-Za-z0-9._/=,-]+)*$'

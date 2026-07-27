@@ -62,7 +62,7 @@ while IFS= read -r segment; do
   fi
 
   # 4) 固定済み環境変数のインライン設定/上書き
-  if echo "$segment" | grep -qE '(^|[[:space:]])(export[[:space:]]+)?WANDB_(API_KEY|ENTITY|PROJECT)='; then
+  if echo "$segment" | grep -qE 'WANDB_(API_KEY|ENTITY|PROJECT|BASE_URL|RUN_ID)\+?='; then
     block "inline WANDB_* override is forbidden" "$segment" \
       "WANDB_API_KEY is handled only by sandbox credential masking; WANDB_ENTITY/WANDB_PROJECT are pinned in settings.json env."
   fi
