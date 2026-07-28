@@ -67,6 +67,18 @@ blocks = [
         "**「2 日分の計算量での再現可否」は未検証のまま** — floodgate accuracy は "
         "16 epoch 時点でまだ単調改善中で、学習量を増やす追実験 (exp-006 候補) が次のステップ。"
     ),
+    wr.H1("用語: BulletOu-epoch と standard-epoch"),
+    wr.MarkdownBlock(
+        "「epoch」の多義性が結論に直結するため 2 語を区別する:\n\n"
+        "- **BulletOu-epoch**: `--superbatches N` 明示時に BulletOu が epoch と呼ぶ単位 = "
+        "N×40M 局面の LR/検証サイクル (データ量と無関係)。本実験 (N=12) では "
+        "1 BulletOu-epoch = 約 4.8 億局面 = 教師全体の約 3%\n"
+        "- **standard-epoch**: 通常の意味 = 教師データ全体 1 周 (奏乗全 30 ファイル "
+        "= 約 146.7 億局面) ≒ 30.6 BulletOu-epoch\n\n"
+        "**本実験の学習量: 16 BulletOu-epoch = 76.8 億局面 ≒ 0.52 standard-epoch** "
+        "(半周未満)。この区別が「2 日くらい学習」との乖離の最有力説明 "
+        "(たややん氏も同じ 76億/150億 の計算に到達、やねうら氏の実設定を確認予定)。"
+    ),
     wr.H1("学習結果 (3 アーム)"),
     wr.MarkdownBlock(
         "| Arm | floodgate acc | floodgate loss | train loss |\n"
@@ -137,6 +149,18 @@ blocks = [
         "| BulletOu の版 | 不明 | 本実験 9577f08 (2026-07-27 clone) |\n"
         "| 強さの測定方法 | 不明 | 「水匠と同じくらい」の測定条件不明。本実験はフェーズ3 プロトコル |\n"
         "| GPU / wall-clock | 不明 | 学習は決定的なので同一スケジュールなら結果は不変 |"
+    ),
+    wr.H1("次のステップ (experiment-006)"),
+    wr.MarkdownBlock(
+        "学習量は時間でも BulletOu-epoch でもなく**局面数 / standard-epoch (教師 1 周)** で刻む。\n\n"
+        "1. フェーズ a: exp-005 の 2^n BulletOu-epoch checkpoint (1/2/4/8/16) の Elo を"
+        "固定 50 ペアで点推定 (GPU 不要)\n"
+        "2. フェーズ b: full standard-epoch 学習 — `--superbatches 367` (1 epoch ≒ 教師 1 周) "
+        "× `--max-epochs 16` (≒ 2350 億局面 ≒ GPU ~28h)。やねうら氏の実設定判明時はそちらを優先\n"
+        "3. フェーズ c: 2^n standard-epoch checkpoint (1/2/4/8/16) の Elo 測定 → "
+        "2 本の「学習量 → Elo」カーブ\n"
+        "4. 最終判定のみ SPRT (elo0=−30, elo1=0)\n\n"
+        "実行は PR #14 マージ後。教師は全 30 ファイル (587GB) を取得済み・取得中。"
     ),
     wr.H1("再現方法・詳細"),
     wr.MarkdownBlock(
