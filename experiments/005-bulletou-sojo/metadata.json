@@ -31,12 +31,13 @@
     "calibration": "movetime 240ms x 16 threads: median 1,974,173 nodes/move (PLAN 校正値 2.03M と整合)",
     "sprt": "elo0=-30 elo1=0 alpha=beta=0.05, pentanomial, max 500 pairs",
     "result": {
-      "decided_at": "2026-07-28T00:00+09:00",
-      "pairs": 32, "games": 64, "cand_score": "14/64 (21.9%)",
-      "pentanomial": [20, 2, 6, 2, 2],
-      "elo": -221.14, "elo_ci95": [-365.23, -124.1],
-      "sprt": "accept_h0 (LLR -3.56)",
-      "note": "エンジン silent crash 2 回 (ペア再走で回復)。verdict: 共有テンプレート値では再現失敗"
+      "decided_at": "2026-07-28T12:05+09:00 (r2 = 千日手ルール修正後の再測定)",
+      "pairs": 32, "games": 64, "cand_score": "10/64 (15.6%)",
+      "pentanomial": [22, 0, 10, 0, 0],
+      "elo": -292.96, "elo_ci95": [-434.07, -203.54],
+      "sprt": "accept_h0 (LLR -8.27)",
+      "r1_reference": "修正前ルール (2回判定バグ) では 14/64, Elo -221 — 判定同じ",
+      "note": "verdict: 共有テンプレート値では再現失敗"
     }
   }
 }
