@@ -28,18 +28,23 @@ from tools.wandb_utils import init_run  # noqa: E402
 
 EXPERIMENT = "006-standard-epoch"
 
+ARMS = {
+    # やねうらお氏の実設定の再現 (2026-07-28 本人コメントで判明)
+    "yane": {"superbatches": 108, "total_positions": "69.1B ≒ 4.7 standard-epoch"},
+    # 「sb 上げればもっと強い」の検証 (LR 周期 ≒ 教師 1 周)
+    "std": {"superbatches": 367, "total_positions": "234.7B ≒ 16 standard-epoch"},
+}
+
 CONFIG = {
     "trainer": "BulletOu 9577f08 (cuda-cpp, sm_120 patch)",
     "arch": "SFNN_halfka2_1024_7_64_k3k3",
-    "teacher": "sojo full 30 files = 14.669B positions (standard-epoch)",
+    "teacher": "sojo full 30 files = 14.669B positions",
     "test_teacher": "takaoyamaoka/floodgate.hcpe (300k/validation, rate 4sb)",
     "positions_per_superbatch": 40_000_000,
-    "superbatches": 367,
     "max_epochs": 16,
-    "epoch_definition": "1 BulletOu-epoch = 367sb = 14.67B pos ≒ 1 standard-epoch",
     "lr": 0.000875,
     "lr_min": 0.000030,
-    "lr_schedule": "step (1 standard-epoch 周期)",
+    "lr_schedule": "step (1 BulletOu-epoch = superbatches サイクル)",
     "optimizer": "ranger",
     "batch_size": 65536,
 }
@@ -47,19 +52,28 @@ CONFIG = {
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--arm", required=True, choices=sorted(ARMS))
     ap.add_argument("--gpu", default="0")
     ap.add_argument("--interval", type=float, default=60.0)
     ap.add_argument("--stall-min", type=float, default=45.0)
     ap.add_argument("--smoke", action="store_true")
     args = ap.parse_args()
 
-    log_path = REPO / "data" / "bulletou" / "checkpoints" / "006-std" / "summary-learn.log"
+    log_path = REPO / "data" / "bulletou" / "checkpoints" / f"006-{args.arm}" / "summary-learn.log"
     start_rows = len(read_rows(log_path)) if log_path.exists() else 0
 
-    cmd = ["bash", str(HERE / "run_training.sh"), "std", str(args.gpu)]
-    config = {**CONFIG, "gpu": args.gpu, "log_path": str(log_path)}
+    cmd = ["bash", str(HERE / "run_training.sh"), args.arm, str(args.gpu)]
+    config = {
+        **CONFIG,
+        **ARMS[args.arm],
+        "arm": args.arm,
+        "gpu": args.gpu,
+        "log_path": str(log_path),
+    }
 
-    with init_run(EXPERIMENT, config=config, tags=["std", "supervised"], smoke=args.smoke) as run:
+    with init_run(
+        EXPERIMENT, config=config, tags=[args.arm, "supervised"], smoke=args.smoke
+    ) as run:
         print(f"wandb run: {getattr(run.run, 'url', None) or run.run.name}", flush=True)
         proc = subprocess.Popen(cmd, start_new_session=True)
 
@@ -82,7 +96,7 @@ def main() -> None:
             rows = read_rows(log_path) if log_path.exists() else []
             for step, m in enumerate(rows[n_logged:], start=n_logged + 1 - start_rows):
                 if any(isinstance(v, float) and math.isnan(v) for v in m.values()):
-                    run.alert("NaN detected", f"006-std step={step}: {m}")
+                    run.alert("NaN detected", f"006-{args.arm} step={step}: {m}")
                 run.log(m, step=step)
             if len(rows) > n_logged:
                 n_logged = len(rows)
@@ -98,7 +112,7 @@ def main() -> None:
                 if time.time() - last_new > args.stall_min * 60 and not stall_alerted:
                     run.alert(
                         "training stalled?",
-                        f"006-std: {args.stall_min:.0f} 分以上新行なし "
+                        f"006-{args.arm}: {args.stall_min:.0f} 分以上新行なし "
                         f"(同期済み {n_logged - start_rows} 行)",
                     )
                     stall_alerted = True

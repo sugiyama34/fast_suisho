@@ -9,11 +9,12 @@
     "BulletOu-epoch": "--superbatches N × 40M 局面の LR サイクル (005: N=12 → 4.8 億局面)",
     "standard-epoch": "教師全体 1 周 = 奏乗 30 ファイル × 488,964,981 = 14,668,949,430 局面"
   },
+  "yaneurao_disclosure_2026_07_28": "実設定は sb=108 × 16 epoch (691 億局面)。元の主張は本人訂正: accuracy は水匠11Plus 超えだが強さは R100 ほど低い。『sb 上げればもっと強くなるはず』",
   "phases": {
-    "a": "005-main checkpoint 0001/2/4/8/16 (2^n BulletOu-epoch) の Elo 測定, 固定 50 ペア",
-    "b": "standard-epoch 学習: --superbatches 367 --max-epochs 16 (≒ 2350 億局面, GPU ~28h)",
-    "c": "006-std checkpoint 0001/2/4/8/16 (2^n standard-epoch) の Elo 測定, 固定 50 ペア",
-    "final": "カーブ端点のみ SPRT (elo0=-30, elo1=0)"
+    "a": "005-main checkpoint 0001/2/4/8/16 (sb=12 系列, 2^n BulletOu-epoch) の Elo 測定, 固定 50 ペア",
+    "b": "2 アーム並列学習: yane = sb108×16ep (氏の実設定再現, ~8.4h) / std = sb367×16ep (sb スケール検証, ~28h)",
+    "c": "両アームの 2^n BulletOu-epoch checkpoint の Elo 測定, 固定 50 ペア → sb=12/108/367 の 3 カーブ",
+    "final": "arm yane 最終 checkpoint に SPRT (elo0=-150, elo1=-50; 『R100 低い』の検証) + arm std vs arm yane 直接比較"
   },
   "hardware": "RTX PRO 5000 Blackwell 48GB (学習 1 GPU), AMD EPYC 7302 16C (対局は学習と非同時)",
   "match_conditions": "experiment-005 フェーズ3 と同一 (movetime 240ms, 16 threads, hash 1024, 互角局面集ストライド 500, engine 87857ca8)",
