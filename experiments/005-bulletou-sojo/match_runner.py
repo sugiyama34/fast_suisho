@@ -223,13 +223,23 @@ def main() -> None:
     ap.add_argument("--threads", type=int, default=16)
     ap.add_argument("--hash-mb", type=int, default=1024)
     ap.add_argument("--max-pairs", type=int, default=500)
+    ap.add_argument(
+        "--fixed-pairs",
+        action="store_true",
+        help="SPRT 判定で打ち切らず --max-pairs まで対局する (Elo カーブの点推定用)",
+    )
+    ap.add_argument(
+        "--games-dir",
+        default=str(HERE / "games"),
+        help="出力先ベースディレクトリ (games/<name>/)。他実験から使う場合に指定",
+    )
     ap.add_argument("--max-plies", type=int, default=320)
     ap.add_argument("--elo0", type=float, default=-30.0)
     ap.add_argument("--elo1", type=float, default=0.0)
     ap.add_argument("--start-pair", type=int, default=0, help="再開用: このペア番号から始める")
     args = ap.parse_args()
 
-    out_dir = HERE / "games" / args.name
+    out_dir = Path(args.games_dir) / args.name
     out_dir.mkdir(parents=True, exist_ok=True)
     games_path = out_dir / "games.jsonl"
     summary_path = out_dir / "summary.json"
@@ -340,7 +350,7 @@ def main() -> None:
                 f"{summary['sprt']}",
                 flush=True,
             )
-            if summary["sprt"] != "continue":
+            if summary["sprt"] != "continue" and not args.fixed_pairs:
                 print(f"SPRT decision: {summary['sprt']}", flush=True)
                 break
     finally:
