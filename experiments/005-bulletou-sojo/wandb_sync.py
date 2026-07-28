@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import csv
 import math
+import signal
 import time
 from pathlib import Path
 
@@ -89,7 +90,25 @@ def main() -> None:
     ap.add_argument("--stall-min", type=float, default=45.0, help="この分数新行がなければ alert")
     ap.add_argument("--once", action="store_true", help="現在のログを 1 回同期して終了")
     ap.add_argument("--smoke", action="store_true", help="wandb へ送らない動作確認モード")
+    ap.add_argument(
+        "--expect-rows",
+        type=int,
+        default=0,
+        help="この行数まで同期したらクリーン終了 (例: 12sb×16epoch なら 192)。"
+        "0 = 無期限 (外部から SIGTERM で停止)",
+    )
     args = ap.parse_args()
+
+    # TaskStop 等の SIGTERM で run が 'Crashed' 表示にならないよう、
+    # ループを抜けて init_run の正常終了パス (run.finish()) を通す
+    stop_requested = False
+
+    def request_stop(_signum, _frame) -> None:
+        nonlocal stop_requested
+        stop_requested = True
+
+    signal.signal(signal.SIGTERM, request_stop)
+    signal.signal(signal.SIGINT, request_stop)
 
     log_path = REPO / "data" / "bulletou" / "checkpoints" / f"005-{args.arm}" / "summary-learn.log"
     config = {**RECIPE, "arm": args.arm, "log_path": str(log_path)}
@@ -129,7 +148,10 @@ def main() -> None:
                     f"(同期済み {n_logged} 行)",
                 )
                 stall_alerted = True
-            if args.once:
+            if args.once or stop_requested:
+                break
+            if args.expect_rows and n_logged >= args.expect_rows:
+                print(f"expected {args.expect_rows} rows synced; finishing run cleanly")
                 break
             time.sleep(args.interval)
 
