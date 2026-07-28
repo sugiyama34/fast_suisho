@@ -1,0 +1,42 @@
+{
+  "slug": "005-bulletou-sojo",
+  "date": "2026-07-27",
+  "git_commit": "7d25aaad1dcd5ad909367e2111aaf288cb163026",
+  "git_dirty": false,
+  "git_status": "clean 起点。本実験の新規ファイル (experiments/005-bulletou-sojo/) のみ未コミット",
+  "bulletou_commit": "9577f08aeff1998756b6ad44fe686c4b9f84b3c3",
+  "bulletou_build": "cargo build --release -p bulletou_lib --features cuda-cpp-backend --example bulletou",
+  "bulletou_local_patch": "crates/cuda_cpp/build.rs に -gencode sm_120/compute_120 を追加 (Blackwell ネイティブ SASS。上流デフォルトは sm_75 のみで起動時 JIT が走る)。数値計算経路は不変",
+  "config_files": ["run_training.sh"],
+  "seeds": "BulletOu 埋め込み固定シード (0x5071_e001..) — 同一コマンドは決定的",
+  "hardware": "RTX PRO 5000 Blackwell 48GB x3 (学習は 1 run = 1 GPU), AMD EPYC 7302 16C, RAM 251GB",
+  "framework": "BulletOu (Rust 1.97.1, cuda-cpp backend), CUDA toolkit 13.3, driver 610.43.02",
+  "teacher_data": {
+    "dataset": "washiun/Knowledge_distilled_dataset_by_DLSuisho15b_unique",
+    "format": "PackedSfenValue 40B/record (.bin を .psv にリネーム)",
+    "train_files": "dlsuisho_unique_001..016.psv (16 x 488,964,981 = 7,823,439,696 局面)",
+    "test_file": "takaoyamaoka/floodgate.hcpe (856,923 局面, 38B/record。当初の奏乗030 held-out から 2026-07-27 に変更・全 arm 再スタート)",
+    "file_size_bytes": 19558599240
+  },
+  "started_at": "2026-07-27T22:17+09:00 (arms main/var-b/var-c 同時起動, GPU 0/1/2。21:50/21:55 の起動はタスク kill / テストセット変更により破棄)",
+  "ended_at": "2026-07-27T23:25+09:00 (全 arm 16 epoch 完走, early stop なし。elapsed 4062s/arm, 2.32M pos/s)",
+  "training_result": {
+    "main":  {"floodgate_acc": 0.697187, "floodgate_loss": 0.077361, "train_loss": 0.033482},
+    "var-b": {"floodgate_acc": 0.694590, "floodgate_loss": 0.078179, "train_loss": 0.032213},
+    "var-c": {"floodgate_acc": 0.695553, "floodgate_loss": 0.078658, "train_loss": 0.032168},
+    "note": "教師ファイル順回転による run 間ばらつきは accuracy ±0.13pp 程度"
+  },
+  "match": {
+    "engine_sha256": "87857ca87f8674f4722812d9ac8608f23503fb4d1b8e651b0371db8527f82240 (2026-07-21 再ビルド版。フェーズ0 記録とは異なるが両陣営同一バイナリ)",
+    "calibration": "movetime 240ms x 16 threads: median 1,974,173 nodes/move (PLAN 校正値 2.03M と整合)",
+    "sprt": "elo0=-30 elo1=0 alpha=beta=0.05, pentanomial, max 500 pairs",
+    "result": {
+      "decided_at": "2026-07-28T00:00+09:00",
+      "pairs": 32, "games": 64, "cand_score": "14/64 (21.9%)",
+      "pentanomial": [20, 2, 6, 2, 2],
+      "elo": -221.14, "elo_ci95": [-365.23, -124.1],
+      "sprt": "accept_h0 (LLR -3.56)",
+      "note": "エンジン silent crash 2 回 (ペア再走で回復)。verdict: 共有テンプレート値では再現失敗"
+    }
+  }
+}
