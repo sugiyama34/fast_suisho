@@ -51,16 +51,29 @@ RECIPE = {
 
 
 def parse_row(row: dict[str, str]) -> dict[str, float] | None:
-    """summary-learn.log の 1 行を wandb メトリクス dict へ。数値でない行は None。"""
+    """summary-learn.log の 1 行を wandb メトリクス dict へ。
+
+    数値でない行 (書き込み途中で千切れた末尾行を含む) は None。
+    千切れ行は次のポーリングで完全な形で読み直されるので捨ててよい。
+    """
     metrics: dict[str, float] = {}
-    for key in ("epoch", "superbatch", "positions"):
-        if row.get(key) is None:
-            return None
-        metrics[key] = int(row[key])
-    for key in ("train_value_loss", "lr_start", "lr_end", "test_value_accuracy", "test_value_loss"):
-        val = row.get(key)
-        if val not in (None, "", "-"):
-            metrics[key] = float(val)
+    try:
+        for key in ("epoch", "superbatch", "positions"):
+            if row.get(key) is None:
+                return None
+            metrics[key] = int(row[key])
+        for key in (
+            "train_value_loss",
+            "lr_start",
+            "lr_end",
+            "test_value_accuracy",
+            "test_value_loss",
+        ):
+            val = row.get(key)
+            if val not in (None, "", "-"):
+                metrics[key] = float(val)
+    except ValueError:
+        return None
     return metrics
 
 

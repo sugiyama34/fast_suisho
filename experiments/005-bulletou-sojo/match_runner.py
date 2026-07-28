@@ -19,9 +19,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import queue
 import subprocess
 import sys
+import threading
 import time
+from collections import Counter
 from pathlib import Path
 
 import cshogi
@@ -56,6 +59,8 @@ class UsiEngine:
             bufsize=1,
             cwd=str(Path(binary).parent),
         )
+        self._lines: queue.Queue[str | None] = queue.Queue()
+        self._start_reader()
         self._send("usi")
         self._wait("usiok", timeout=30)
         for name, value in [
@@ -67,7 +72,10 @@ class UsiEngine:
             ("NetworkDelay", 0),
             ("NetworkDelay2", 0),
             ("BookFile", "no_book"),
-            ("MaxMovesToDraw", max_moves),
+            # 手数上限引き分けはハーネス側 (len(moves) >= max_plies) でのみ判定する。
+            # エンジン側 MaxMovesToDraw は gamePly 基準 (開始 sfen の手数 ~24 を含む)
+            # でハーネスの手数と食い違うため無効化 (0)
+            ("MaxMovesToDraw", 0),
         ]:
             self._send(f"setoption name {name} value {value}")
         self._send("isready")
@@ -78,14 +86,31 @@ class UsiEngine:
         self.proc.stdin.write(line + "\n")
         self.proc.stdin.flush()
 
+    def _start_reader(self) -> None:
+        """stdout をスレッドで読み queue に流す。blocking readline だと
+        エンジンが無出力でハングした際にタイムアウトを検出できないため。"""
+        assert self.proc.stdout is not None
+
+        def pump(stdout=self.proc.stdout, q=self._lines) -> None:
+            for line in stdout:
+                q.put(line)
+            q.put(None)  # EOF
+
+        threading.Thread(target=pump, daemon=True).start()
+
+    def _readline(self, deadline: float) -> str:
+        try:
+            line = self._lines.get(timeout=max(0.0, deadline - time.time()))
+        except queue.Empty:
+            raise TimeoutError("engine produced no output before deadline") from None
+        if line is None:
+            raise RuntimeError("engine died")
+        return line
+
     def _wait(self, token: str, timeout: float) -> None:
         deadline = time.time() + timeout
-        assert self.proc.stdout is not None
         while time.time() < deadline:
-            line = self.proc.stdout.readline()
-            if not line:
-                raise RuntimeError("engine died")
-            if line.strip() == token:
+            if self._readline(deadline).strip() == token:
                 return
         raise TimeoutError(f"engine did not answer {token!r} in {timeout}s")
 
@@ -100,12 +125,8 @@ class UsiEngine:
         self._send(f"go movetime {movetime_ms}")
         nodes = None
         deadline = time.time() + movetime_ms / 1000.0 + 30.0
-        assert self.proc.stdout is not None
         while time.time() < deadline:
-            line = self.proc.stdout.readline()
-            if not line:
-                raise RuntimeError("engine died during search")
-            parts = line.split()
+            parts = self._readline(deadline).split()
             if not parts:
                 continue
             if parts[0] == "info" and "nodes" in parts:
@@ -141,20 +162,26 @@ def play_game(
         e.newgame()
     board = cshogi.Board(sfen=start_sfen)
     moves: list[str] = []
+    # 千日手判定: 公式ルール通り「同一局面 4 回目」で成立とする。cshogi の
+    # is_draw() は初回の再訪で REPETITION_* を返すため、それをそのまま終局に
+    # 使わず、zobrist hash の出現回数を数えて 4 回目に達したときだけ
+    # is_draw() で分類する (cshogi/cli.py と同じ方式)。
+    # REPETITION_SUPERIOR / INFERIOR (優等/劣等局面) は探索用ヒューリスティック
+    # であり対局の終局ルールではないので無視する。
+    seen: Counter[int] = Counter()
+    seen[board.zobrist_hash()] += 1
     while True:
         if board.is_game_over():  # 詰み (合法手なし): 手番側の負け
             stm_is_cand = (board.turn == cshogi.BLACK) == cand_is_black
             return (0.0 if stm_is_cand else 1.0), "mate", len(moves)
-        draw = board.is_draw()
-        if draw == cshogi.REPETITION_DRAW:
+        if seen[board.zobrist_hash()] >= 4:
+            draw = board.is_draw()
+            stm_is_cand = (board.turn == cshogi.BLACK) == cand_is_black
+            if draw == cshogi.REPETITION_WIN:  # 相手の連続王手による千日手
+                return (1.0 if stm_is_cand else 0.0), "perpetual_check_win", len(moves)
+            if draw == cshogi.REPETITION_LOSE:  # 自分の連続王手による千日手
+                return (0.0 if stm_is_cand else 1.0), "perpetual_check_lose", len(moves)
             return 0.5, "sennichite", len(moves)
-        if draw in (cshogi.REPETITION_WIN, cshogi.REPETITION_SUPERIOR):
-            # 手番側の勝ち扱い (連続王手の千日手等は cshogi の判定に従う)
-            stm_is_cand = (board.turn == cshogi.BLACK) == cand_is_black
-            return (1.0 if stm_is_cand else 0.0), "repetition_win", len(moves)
-        if draw in (cshogi.REPETITION_LOSE, cshogi.REPETITION_INFERIOR):
-            stm_is_cand = (board.turn == cshogi.BLACK) == cand_is_black
-            return (0.0 if stm_is_cand else 1.0), "repetition_lose", len(moves)
         if len(moves) >= max_plies:
             return 0.5, "max_plies", len(moves)
 
@@ -174,6 +201,7 @@ def play_game(
             return (0.0 if stm_is_cand else 1.0), f"illegal_move:{mv}", len(moves)
         board.push(move_obj)
         moves.append(mv)
+        seen[board.zobrist_hash()] += 1
 
 
 def main() -> None:

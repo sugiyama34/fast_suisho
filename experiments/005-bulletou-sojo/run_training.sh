@@ -11,9 +11,9 @@
 #
 #   長時間 run は tmux / nohup 推奨:
 #     tmux new -s bulletou-main 'bash experiments/005-bulletou-sojo/run_training.sh main 0'
-set -eu
+set -euo pipefail
 
-ARM="${1:?arm を指定 (smoke|main|var-b)}"
+ARM="${1:?arm を指定 (smoke|main|var-b|var-c)}"
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 BIN="$REPO/data/bulletou/BulletOu/target/release/examples/bulletou"
 SOJO="$REPO/data/teacher/sojo"
