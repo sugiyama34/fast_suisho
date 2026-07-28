@@ -53,16 +53,18 @@ pentanomial SPRT (elo0=−30, elo1=0, α=β=0.05)。
   (= 1/2/4/8/16 BulletOu-epoch, sb=12 系列 = 4.8〜76.8 億局面) を固定 50 ペアで測定
   (「LR 周期が短すぎる場合」の参照カーブ)
 - **フェーズ b — 2 アーム並列 (GPU 0/1)**:
-  - **arm `yane`** (氏の実設定の再現): `--superbatches 108` + `--max-epochs 16`
-    = 691 億局面 ≒ 4.7 standard-epoch (GPU ~8.4h)
+  - **arm `yane20`**: `--superbatches 108` + `--max-epochs 20` = 864 億局面 (GPU ~10.5h)。
+    学習は決定的なので、この run の **0016 checkpoint = 氏の実設定 (sb=108×16ep) の
+    net そのもの**、0020 = 氏の「20 epoch ぐらい」指針の net。1 run で両方得る
   - **arm `std`** (「sb 上げればもっと強い」の検証): `--superbatches 367`
     (LR 周期 ≒ 教師 1 周) + `--max-epochs 16` = 2350 億局面 ≒ 16 standard-epoch
     (GPU ~28h)
   - 共通: 教師 = 奏乗全 30 ファイル、検証 = floodgate.hcpe、supervisor で W&B 追跡
-- **フェーズ c**: 両アームの 1/2/4/8/16 BulletOu-epoch checkpoint をフェーズ a と
-  同条件で測定 (sb=12 / 108 / 367 の 3 本のカーブが揃う)。**最終判定**: arm yane の
-  最終 checkpoint に対し SPRT (elo0=−150, elo1=−50; 「R100 低い」の検証) と、
-  arm std 最終 vs arm yane 最終の直接比較
+    (W&B project: `20260728_BulletOu_with_Sojo_data`, 2026-07-28 ユーザー作成)
+- **フェーズ c**: yane20 の 1/2/4/8/16/20、std の 1/2/4/8/16 BulletOu-epoch
+  checkpoint をフェーズ a と同条件で測定 (sb=12 / 108 / 367 の 3 本のカーブが揃う)。
+  **最終判定**: yane20 の 0016 checkpoint (= 氏の実設定 net) に対し SPRT
+  (elo0=−150, elo1=−50; 「R100 低い」の検証) と、arm std 最終 vs yane20 最終の直接比較
 - 対局条件は experiment-005 と完全同一 (movetime 240ms・16 threads・hash 1024・
   互角局面集ストライド 500・同一エンジンバイナリ)。CPU 競合を避けるため
   **対局と GPU 学習は同時に走らせない** (校正条件の維持)

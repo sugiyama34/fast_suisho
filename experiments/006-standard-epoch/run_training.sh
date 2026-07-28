@@ -1,14 +1,15 @@
 #!/bin/bash
 # フェーズ b: superbatches スケール学習 (2026-07-28 やねうらお氏の実設定公開を反映)。
 #
-#   bash experiments/006-standard-epoch/run_training.sh <yane|std> [gpu_index]
+#   bash experiments/006-standard-epoch/run_training.sh <yane|yane20|std> [gpu_index]
 #
-#   yane: --superbatches 108 × 16 epoch = 691 億局面 (氏の実設定の再現, GPU ~8.4h)
-#   std : --superbatches 367 × 16 epoch = 2350 億局面 (LR 周期 ≒ 教師 1 周。
-#         「sb 上げればもっと強い」の検証, GPU ~28h)
+#   yane  : --superbatches 108 × 16 epoch = 691 億局面 (氏の実設定の再現, GPU ~8.4h)
+#   yane20: --superbatches 108 × 20 epoch = 864 億局面 (氏の「20 epochぐらい」指針, ~10.5h)
+#   std   : --superbatches 367 × 16 epoch = 2350 億局面 (LR 周期 ≒ 教師 1 周。
+#           「sb 上げればもっと強い」の検証, GPU ~28h)
 set -euo pipefail
 
-ARM="${1:?arm を指定 (yane|std)}"
+ARM="${1:?arm を指定 (yane|yane20|std)}"
 GPU="${2:-0}"
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 BIN="$REPO/data/bulletou/BulletOu/target/release/examples/bulletou"
@@ -20,8 +21,9 @@ mkdir -p "$LOG_DIR"
 export LD_LIBRARY_PATH="/usr/local/cuda/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 case "$ARM" in
-  yane) SB=108 ;;
-  std)  SB=367 ;;
+  yane)   SB=108; EPOCHS=16 ;;
+  yane20) SB=108; EPOCHS=20 ;;
+  std)    SB=367; EPOCHS=16 ;;
   *) echo "unknown arm: $ARM" >&2; exit 1 ;;
 esac
 
@@ -39,7 +41,7 @@ echo "[launch] arm=$ARM sb=$SB gpu=$GPU $(date)"
   --test-positions 300000 \
   --positions-per-superbatch 40000000 \
   --superbatches "$SB" \
-  --max-epochs 16 \
+  --max-epochs "$EPOCHS" \
   --lr 0.000875 \
   --lr-min 0.000030 \
   --lr-schedule step \

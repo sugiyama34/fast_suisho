@@ -30,9 +30,19 @@ EXPERIMENT = "006-standard-epoch"
 
 ARMS = {
     # やねうらお氏の実設定の再現 (2026-07-28 本人コメントで判明)
-    "yane": {"superbatches": 108, "total_positions": "69.1B ≒ 4.7 standard-epoch"},
+    "yane": {
+        "superbatches": 108,
+        "max_epochs": 16,
+        "total_positions": "69.1B ≒ 4.7 standard-epoch",
+    },
+    # 氏の「20 epoch ぐらい回さないといかん」指針
+    "yane20": {
+        "superbatches": 108,
+        "max_epochs": 20,
+        "total_positions": "86.4B ≒ 5.9 standard-epoch",
+    },
     # 「sb 上げればもっと強い」の検証 (LR 周期 ≒ 教師 1 周)
-    "std": {"superbatches": 367, "total_positions": "234.7B ≒ 16 standard-epoch"},
+    "std": {"superbatches": 367, "max_epochs": 16, "total_positions": "234.7B ≒ 16 standard-epoch"},
 }
 
 CONFIG = {
