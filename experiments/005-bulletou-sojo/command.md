@@ -24,11 +24,23 @@ tmux new -s bulletou-varb 'bash experiments/005-bulletou-sojo/run_training.sh va
 実効値: sb = 39,976,960 局面 (40M を batch 65536 の倍数へ切り捨て)、
 1 epoch = 12 sb ≒ 4.80 億局面、16 epoch ≒ 76.8 億局面 (early stop あり)。
 
-## wandb 同期 (セッション内で Claude が起動)
+## wandb 同期
+
+**標準エントリポイント (推奨)**: supervisor がトレーナと W&B run を単一ライフサイクルで
+所有する (トレーナ exit 0 → Finished / 非 0 → Failed。外部 kill 不要):
+
+```bash
+uv run python experiments/005-bulletou-sojo/train_supervised.py --arm main --gpu 0
+```
+
+補助 (既に走っている学習に後付けする場合のみ): 独立ポーラ
 
 ```bash
 uv run python experiments/005-bulletou-sojo/wandb_sync.py --arm main
 ```
+
+(実験 005 本番は歴史的経緯で独立ポーラ方式で記録した。supervisor は Codex 設計相談
+2026-07-28 を受けて追加したもので、exp-006 以降の標準)
 
 ## 再ビルド手順 (参考)
 

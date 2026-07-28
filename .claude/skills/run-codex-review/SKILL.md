@@ -54,8 +54,13 @@ If present, run the review through `codex exec` (synchronous — `--background` 
 3. Run it:
 
 ```bash
-codex exec '<prompt>' 2>&1 | tail -60
+codex exec '<prompt>' < /dev/null 2>&1 | tail -60
 ```
+
+The `< /dev/null` is required: `codex exec` reads "additional input from stdin" and
+blocks forever if stdin is an open pipe that never delivers EOF (observed 2026-07-28
+when run as a background task). Note the whole pipeline buffers in `tail`, so no
+output appears until Codex finishes — that is normal, not a hang.
 
 4. Apply the Step 5 sandbox-marker scan to the output. If blocked or the command fails, jump to Step 6. Otherwise present the findings per Step 5 conventions and stop — do not also run Step 6.
 
