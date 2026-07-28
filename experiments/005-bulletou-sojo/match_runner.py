@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import queue
 import subprocess
 import sys
@@ -83,8 +84,13 @@ class UsiEngine:
 
     def _send(self, line: str) -> None:
         assert self.proc.stdin is not None
-        self.proc.stdin.write(line + "\n")
-        self.proc.stdin.flush()
+        try:
+            self.proc.stdin.write(line + "\n")
+            self.proc.stdin.flush()
+        except OSError as err:
+            # エンジンがアイドル中に死んでいた場合、書き込み側で BrokenPipeError が
+            # 出る。呼び出し元の respawn リトライに乗せるため RuntimeError に揃える
+            raise RuntimeError(f"engine died (write failed: {err})") from err
 
     def _start_reader(self) -> None:
         """stdout をスレッドで読み queue に流す。blocking readline だと
@@ -233,18 +239,32 @@ def main() -> None:
     sfens = sfens[: args.max_pairs]
 
     sprt = PentanomialSprt(elo0=args.elo0, elo1=args.elo1)
-    # 再開: 既存 games.jsonl から完結ペア (2 局揃い) だけ再構築し、ファイルも圧縮し直す
+    # 再開: 既存 games.jsonl から完結ペア (2 局揃い) だけ再構築する。
+    # 千切れ行 (前回の hard kill 起因) は捨てる。不完全レコードを落とした場合のみ、
+    # tmp ファイル + atomic rename でファイルを圧縮し直す (truncate-in-place だと
+    # 書き直し中のクラッシュで全対局記録を失うため)
     done_recs: dict[int, list[dict]] = {}
     if games_path.exists():
+        n_lines = 0
         with games_path.open() as fh:
             for line in fh:
-                rec = json.loads(line)
+                n_lines += 1
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
                 done_recs.setdefault(rec["pair"], []).append(rec)
         done_recs = {p: recs[:2] for p, recs in done_recs.items() if len(recs) >= 2}
-        with games_path.open("w") as fh:
-            for p in sorted(done_recs):
-                for rec in done_recs[p]:
-                    fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        n_kept = sum(len(r) for r in done_recs.values())
+        if n_kept != n_lines:
+            tmp_path = games_path.with_suffix(".jsonl.tmp")
+            with tmp_path.open("w") as fh:
+                for p in sorted(done_recs):
+                    for rec in done_recs[p]:
+                        fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp_path, games_path)
         for recs in done_recs.values():
             sprt.add_pair(sum(r["cand_score"] for r in recs))
 
