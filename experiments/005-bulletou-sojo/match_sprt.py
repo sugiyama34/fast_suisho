@@ -90,12 +90,17 @@ class PentanomialSprt:
         return "continue"
 
     def elo_ci(self) -> tuple[float, float, float]:
-        """(elo 点推定, 95% CI 下限, 上限)。ペア分散ベース。"""
+        """(elo 点推定, 95% CI 下限, 上限)。ペア分散ベース。
+
+        全ペア同一結果だと標本分散 0 → 幅 0 の「CI」になり確信を過大表示する
+        ため、llr() と同じ分散下限を適用する (それでも有限標本の CI としては
+        楽観的であることに変わりはない — 報告時は n も併記すること)。
+        """
         n = self.n_pairs
         m, v = self.mean_var()
         if n == 0:
             return 0.0, -math.inf, math.inf
-        se = math.sqrt(v / n) if v > 0 else 0.0
+        se = math.sqrt(max(v, 1e-6) / n)
         return (
             score_to_elo(m),
             score_to_elo(m - 1.96 * se),
