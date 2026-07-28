@@ -7,7 +7,7 @@ argument-hint: "<review|adversarial-review|status|result> [--base <ref>] [--back
 
 Run a Codex review by calling the `codex-companion.mjs` script directly via Bash, bypassing plugin `disable-model-invocation` restrictions.
 
-If Codex is unavailable for `review` / `adversarial-review` modes (script missing, runtime error, or sandbox-blocked output per issue #142), fall through to **Step 6 — Claude Code review fallback**, which runs a subagent against the branch diff. The fallback never applies to `status` / `result` modes, since those operate on an already-launched Codex job.
+If the companion script is unavailable for `review` / `adversarial-review` modes, try the **`codex` CLI directly** first (**Step 1b** — confirmed working in this environment, 2026-07-28), and only if that is also unavailable fall through to **Step 6 — Claude Code review fallback**, which runs a subagent against the branch diff. Neither fallback applies to `status` / `result` modes, since those operate on an already-launched Codex job.
 
 Raw arguments:
 `$ARGUMENTS`
@@ -26,11 +26,43 @@ Note the output path — all subsequent steps refer to it as `$CODEX_SCRIPT`. Su
 
 If the output is empty:
 
-1. Tell the user: "Codex companion script not found. The OpenAI Codex plugin may not be installed or the cache path has changed."
-2. Suggest: "Run `/codex:setup` to install or reconfigure the Codex plugin."
-3. Branch on mode:
-   - `review` or `adversarial-review`: tell the user "Falling back to Claude Code review subagent (foreground)." and jump to Step 6.
-   - `status` or `result`: stop. The fallback does not apply to meta-operations on an already-launched Codex job.
+1. Tell the user: "Codex companion script not found — trying the `codex` CLI directly."
+2. Branch on mode:
+   - `review` or `adversarial-review`: continue to Step 1b.
+   - `status` or `result`: stop. The fallbacks do not apply to meta-operations on an already-launched Codex job.
+
+---
+
+## Step 1b — `codex` CLI fallback (when the companion script is missing)
+
+Check whether the standalone Codex CLI is installed:
+
+```bash
+command -v codex
+```
+
+If absent, suggest "Run `/codex:setup` to install or reconfigure the Codex plugin.", tell the user "Falling back to Claude Code review subagent (foreground).", and jump to Step 6.
+
+If present, run the review through `codex exec` (synchronous — `--background` is ignored here; tell the user up front):
+
+1. Resolve `--base <ref>` (default `main`) and mode from `$ARGUMENTS`.
+2. Build a single-quoted prompt (escape embedded single quotes as `'\''`) instructing Codex to:
+   - run `git diff <base>...HEAD` itself (exclude bulky generated/binary paths where sensible, e.g. `":(exclude)*.png"`, `":(exclude)uv.lock"`),
+   - review the changes — for `adversarial-review`, add the adversarial framing and any focus text from `$ARGUMENTS`,
+   - report findings ordered by severity with `path:line` and a one-line rationale, or "No issues found",
+   - NOT modify any files.
+3. Run it:
+
+```bash
+codex exec '<prompt>' < /dev/null 2>&1 | tail -60
+```
+
+The `< /dev/null` is required: `codex exec` reads "additional input from stdin" and
+blocks forever if stdin is an open pipe that never delivers EOF (observed 2026-07-28
+when run as a background task). Note the whole pipeline buffers in `tail`, so no
+output appears until Codex finishes — that is normal, not a hang.
+
+4. Apply the Step 5 sandbox-marker scan to the output. If blocked or the command fails, jump to Step 6. Otherwise present the findings per Step 5 conventions and stop — do not also run Step 6.
 
 ---
 
