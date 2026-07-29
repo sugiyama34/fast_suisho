@@ -25,9 +25,10 @@ EXTRA_FLAGS=()
 case "$ARM" in
   yane)   SB=108; EPOCHS=16 ;;
   yane20) SB=108; EPOCHS=20 ;;
-  # yane20 の checkpoint 0020 から追加 12 epoch (累積 32) を継続学習。
-  # 出力先は同じ 006-yane20 (checkpoint 番号・positions は累積される)
-  yane32) SB=108; EPOCHS=12; OUT_ARM="yane20"; EXTRA_FLAGS=(--resume) ;;
+  # yane20 の checkpoint 0020 から累積 32 epoch まで継続学習。
+  # resume 時の --max-epochs は「累積の上限」として解釈される (12 を渡すと
+  # 既に 20 epoch 済みのため即終了する — 2026-07-29 実測)
+  yane32) SB=108; EPOCHS=32; OUT_ARM="yane20"; EXTRA_FLAGS=(--resume) ;;
   std)    SB=367; EPOCHS=16 ;;
   *) echo "unknown arm: $ARM" >&2; exit 1 ;;
 esac
