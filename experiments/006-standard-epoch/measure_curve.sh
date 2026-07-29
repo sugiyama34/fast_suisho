@@ -18,8 +18,9 @@ PAIRS=50
 
 case "$PHASE" in
   a)        CKPT_BASE="$REPO/data/bulletou/checkpoints/005-main";   PREFIX="bu-ep";   EPOCHS="1 2 4 8 16" ;;
-  # yane20 run の 0016 = やねうらお氏実設定 (sb=108×16ep) の net そのもの (決定的学習のため)
-  c-yane20) CKPT_BASE="$REPO/data/bulletou/checkpoints/006-yane20"; PREFIX="yane-ep"; EPOCHS="1 2 4 8 16 20" ;;
+  # yane20 run の 0016 = やねうらお氏実設定 (sb=108×16ep) の net そのもの (決定的学習のため)。
+  # 0032 は yane32 継続学習の最終 checkpoint
+  c-yane20) CKPT_BASE="$REPO/data/bulletou/checkpoints/006-yane20"; PREFIX="yane-ep"; EPOCHS="1 2 4 8 16 20 32" ;;
   c-std)    CKPT_BASE="$REPO/data/bulletou/checkpoints/006-std";    PREFIX="std-ep";  EPOCHS="1 2 4 8 16" ;;
   *) echo "unknown phase: $PHASE" >&2; exit 1 ;;
 esac
