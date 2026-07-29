@@ -20,9 +20,14 @@ mkdir -p "$LOG_DIR"
 
 export LD_LIBRARY_PATH="/usr/local/cuda/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
+OUT_ARM="$ARM"
+EXTRA_FLAGS=()
 case "$ARM" in
   yane)   SB=108; EPOCHS=16 ;;
   yane20) SB=108; EPOCHS=20 ;;
+  # yane20 の checkpoint 0020 から追加 12 epoch (累積 32) を継続学習。
+  # 出力先は同じ 006-yane20 (checkpoint 番号・positions は累積される)
+  yane32) SB=108; EPOCHS=12; OUT_ARM="yane20"; EXTRA_FLAGS=(--resume) ;;
   std)    SB=367; EPOCHS=16 ;;
   *) echo "unknown arm: $ARM" >&2; exit 1 ;;
 esac
@@ -49,6 +54,7 @@ echo "[launch] arm=$ARM sb=$SB gpu=$GPU $(date)"
   --optimizer-weight-decay 0.0 \
   --save-rate 9999 \
   --validation-rate 4 \
-  --output "$REPO/data/bulletou/checkpoints/006-$ARM" \
+  --output "$REPO/data/bulletou/checkpoints/006-$OUT_ARM" \
+  ${EXTRA_FLAGS[@]+"${EXTRA_FLAGS[@]}"} \
   "${@:3}" 2>&1 | tee -a "$LOG_DIR/$ARM.log"
 echo "[exit] arm=$ARM $(date)"

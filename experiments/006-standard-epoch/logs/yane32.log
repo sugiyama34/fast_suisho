@@ -1,0 +1,3 @@
+  backend = cuda-cpp Windows-native direct SFNN_HALFKA2 trainer (0 batch steps)
+  cuda-cpp SFNN schedule = production: max_epochs=12, superbatches=108, save_rate=9999, validation_rate=4, save_epoch_end=true, batches_per_superbatch=610, lr=step
+  cuda-cpp schedule = complete: no remaining training steps; latest checkpoint already reached --max-epochs 12

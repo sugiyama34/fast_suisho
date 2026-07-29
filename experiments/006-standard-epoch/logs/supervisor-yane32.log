@@ -1,0 +1,7 @@
+wandb run: https://wandb.ai/suisho/20260728_BulletOu_with_Sojo_data/runs/d7fjt8ei
+[launch] arm=yane32 sb=108 gpu=0 Wed Jul 29 21:20:06 JST 2026
+  backend = cuda-cpp Windows-native direct SFNN_HALFKA2 trainer (0 batch steps)
+  cuda-cpp SFNN schedule = production: max_epochs=12, superbatches=108, save_rate=9999, validation_rate=4, save_epoch_end=true, batches_per_superbatch=610, lr=step
+  cuda-cpp schedule = complete: no remaining training steps; latest checkpoint already reached --max-epochs 12
+[exit] arm=yane32 Wed Jul 29 21:20:06 JST 2026
+trainer finished (rc=0); synced 0 rows

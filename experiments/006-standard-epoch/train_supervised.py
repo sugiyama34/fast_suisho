@@ -41,6 +41,12 @@ ARMS = {
         "max_epochs": 20,
         "total_positions": "86.4B ≒ 5.9 standard-epoch",
     },
+    # yane20 完了後の追加学習 (+12 epoch = 累積 32)。test accuracy がまだ伸びていたため
+    "yane32": {
+        "superbatches": 108,
+        "max_epochs": "12 (resume; cumulative 32)",
+        "total_positions": "138.2B ≒ 9.4 standard-epoch (cumulative)",
+    },
     # 「sb 上げればもっと強い」の検証 (LR 周期 ≒ 教師 1 周)
     "std": {"superbatches": 367, "max_epochs": 16, "total_positions": "234.7B ≒ 16 standard-epoch"},
 }
@@ -69,7 +75,9 @@ def main() -> None:
     ap.add_argument("--smoke", action="store_true")
     args = ap.parse_args()
 
-    log_path = REPO / "data" / "bulletou" / "checkpoints" / f"006-{args.arm}" / "summary-learn.log"
+    # yane32 は yane20 と同じ出力ディレクトリに追記する (resume 継続学習)
+    out_arm = "yane20" if args.arm == "yane32" else args.arm
+    log_path = REPO / "data" / "bulletou" / "checkpoints" / f"006-{out_arm}" / "summary-learn.log"
     start_rows = len(read_rows(log_path)) if log_path.exists() else 0
 
     cmd = ["bash", str(HERE / "run_training.sh"), args.arm, str(args.gpu)]
