@@ -18,6 +18,7 @@ PROJECT = os.environ.get("WANDB_PROJECT", "20260728_BulletOu_with_Sojo_data")
 RUNS = {
     "8fdedf87": ("yane20 (sb=108 x 20ep)", "#2a78d6"),
     "rs5o4efk": ("std (sb=367 x 16ep)", "#eb6834"),
+    "4p1ut2q0": ("yane32 (resume +12ep, cum 32)", "#1baf7a"),
 }
 
 api = wandb.Api()
