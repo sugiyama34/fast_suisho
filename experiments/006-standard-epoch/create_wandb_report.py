@@ -71,9 +71,22 @@ blocks = [
         " 互角局面集ストライド 500, pentanomial)。"
     ),
     wr.PanelGrid(runsets=[runset], panels=panels),
+    wr.H1("学習指標は Elo の代理になるか (17 checkpoint の散布図行列)"),
+    wr.MarkdownBlock(
+        "| 指標 | 全 17 点 (Elo −636〜−104) | acc ≥ 0.70 の 8 点 (Elo −263〜−104) |\n"
+        "| --- | --- | --- |\n"
+        "| train loss | r = −0.93 | r = −0.15 |\n"
+        "| test loss (floodgate) | r = −0.93 | **r = −0.52** |\n"
+        "| test accuracy (floodgate) | r = +0.92 | **r = +0.01** |\n\n"
+        "**proxy 性能は 2 段階**: 数百 Elo 差の粗い比較には 3 指標とも十分 (|r|≈0.93)。"
+        "しかし良い net 同士 (150 Elo 級以下の差) では **accuracy の相関は消滅** "
+        "(ep16 −104 と ep32 −263 が同じ 70.39%)。test loss だけ弱い相関が残る。"
+        "**checkpoint 選択の最終判断は必ず対局で**。散布図行列はリポジトリ "
+        "`experiments/006-standard-epoch/figures/metric_proxy_scatter.png` 参照。"
+    ),
     wr.H1("解釈"),
     wr.MarkdownBlock(
-        "- LR 周期は「小さすぎると悪い」(sb=12→108 で +190 Elo 級) が、108→367 の追加効果なし\n"
+        "- LR 周期は「小さすぎると悪い」(sb=12 は 77 億局面までで −300 前後の頭打ち傾向、sb=108 はその先も改善し −104 到達) が、108→367 の追加効果なし\n"
         "- このレシピの限界は LR ではなく**データ再利用**が決めている可能性が高い"
         " (どの sb でも 4〜5 周でピーク)\n"
         "- モデル選択を floodgate accuracy でやってはいけない (ep16→32 で accuracy 不変・"
@@ -83,12 +96,24 @@ blocks = [
     ),
 ]
 
-report = wr.Report(
-    entity=ENTITY,
-    project=PROJECT,
-    title="006-standard-epoch: 学習量とLR周期を伸ばせば奏乗レシピはどこまで強くなるか",
-    description="結論: やね氏実設定で −104 (訂正主張を再現)。強さは教師4〜5周でピーク、以降は accuracy 不変のまま悪化。",
-    blocks=blocks,
+REPORT_URL = (
+    "https://wandb.ai/suisho/20260728_BulletOu_with_Sojo_data/reports/"
+    "006-standard-epoch:-%E5%AD%A6%E7%BF%92%E9%87%8F%E3%81%A8LR%E5%91%A8%E6%9C%9F%E3%82%92"
+    "%E4%BC%B8%E3%81%B0%E3%81%9B%E3%81%B0%E5%A5%8F%E4%B9%97%E3%83%AC%E3%82%B7%E3%83%94%E3%81%AF"
+    "%E3%81%A9%E3%81%93%E3%81%BE%E3%81%A7%E5%BC%B7%E3%81%8F%E3%81%AA%E3%82%8B%E3%81%8B"
+    "--VmlldzoxNzYyMjIzNw"
 )
+
+try:
+    report = wr.Report.from_url(REPORT_URL)
+    report.blocks = blocks
+except Exception:
+    report = wr.Report(
+        entity=ENTITY,
+        project=PROJECT,
+        title="006-standard-epoch: 学習量とLR周期を伸ばせば奏乗レシピはどこまで強くなるか",
+        description="結論: やね氏実設定で −104 (訂正主張を再現)。強さは教師4〜5周でピーク、以降は accuracy 不変のまま悪化。",
+        blocks=blocks,
+    )
 report.save()
 print("report url:", getattr(report, "url", "(saved)"))

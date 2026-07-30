@@ -2,14 +2,14 @@
 # フェーズ a/c: checkpoint 系列の Elo カーブ測定 (固定 50 ペア、直列)。
 #
 #   bash experiments/006-standard-epoch/measure_curve.sh a       # 005 (sb=12) 系列
-#   bash experiments/006-standard-epoch/measure_curve.sh c-yane  # 006 arm yane (sb=108) 系列
+#   bash experiments/006-standard-epoch/measure_curve.sh c-yane20  # 006 sb=108 系列 (ep32 含む)
 #   bash experiments/006-standard-epoch/measure_curve.sh c-std   # 006 arm std (sb=367) 系列
 #
 # 対局条件は experiment-005 フェーズ3 と同一。GPU 学習と同時に走らせないこと
 # (CPU 競合で movetime 校正が崩れる)。
 set -euo pipefail
 
-PHASE="${1:?phase を指定 (a|c-yane|c-std)}"
+PHASE="${1:?phase を指定 (a|c-yane20|c-std)}"
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 RUNNER="$REPO/experiments/005-bulletou-sojo/match_runner.py"
 GAMES_DIR="$REPO/experiments/006-standard-epoch/games"

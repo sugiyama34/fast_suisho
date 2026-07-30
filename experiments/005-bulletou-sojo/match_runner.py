@@ -246,7 +246,10 @@ def main() -> None:
 
     with open(args.book) as fh:
         sfens = [line.strip().removeprefix("sfen ").strip() for line in fh if line.strip()]
-    sfens = sfens[: args.max_pairs]
+    if not args.fixed_pairs:
+        sfens = sfens[: args.max_pairs]
+    # --fixed-pairs では全 sfen を候補に残し、エンジン障害でペアが落ちても
+    # 後続の局面で補充して「ちょうど max_pairs ペア」を満たす
 
     sprt = PentanomialSprt(elo0=args.elo0, elo1=args.elo1)
     # 再開: 既存 games.jsonl から完結ペア (2 局揃い) だけ再構築する。
@@ -302,6 +305,8 @@ def main() -> None:
     games_fh = games_path.open("a")
     try:
         for i, sfen in enumerate(sfens):
+            if args.fixed_pairs and sprt.n_pairs >= args.max_pairs:
+                break
             if i < args.start_pair or i in done_recs:
                 continue
             recs: list[dict] = []
