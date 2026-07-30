@@ -19,5 +19,13 @@
   "hardware": "RTX PRO 5000 Blackwell 48GB (学習 1 GPU), AMD EPYC 7302 16C (対局は学習と非同時)",
   "match_conditions": "experiment-005 フェーズ3 と同一 (movetime 240ms, 16 threads, hash 1024, 互角局面集ストライド 500, engine 87857ca8)",
   "started_at": "2026-07-28 (phase a)",
-  "ended_at": null
+  "ended_at": "2026-07-30T20:13+09:00 (phase c 全 17 点完了)",
+  "results": {
+    "yane_ep16_yaneurao_config": {"elo": -103.7, "ci95": [-171.2, -43.1], "verdict": "氏の訂正主張『R100低い』を再現"},
+    "best_by_series": {"sb12": "-301 (ep8)", "sb108": "-104 (ep16 = 4.7周)", "sb367": "-135 (ep4 = 4周)"},
+    "overtraining": "sb108 ep32 (9.4周) = -263 — ピーク比 -159 Elo 悪化 (CI 非重複)。floodgate accuracy は 70.39% で不変",
+    "sb_scaling_claim": "sb=367 は sb=108 を上回らず (CI 重なる) — 『sb上げればもっと強い』は未確認",
+    "total_games": 1700,
+    "note": "エンジン silent crash 増加 (respawn 13+回, 4 点で 1-3 ペア欠落)"
+  }
 }
