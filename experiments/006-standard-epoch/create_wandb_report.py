@@ -14,6 +14,12 @@ PROJECT = os.environ.get("WANDB_PROJECT", "20260728_BulletOu_with_Sojo_data")
 
 RUN_IDS = ["8fdedf87", "4p1ut2q0", "rs5o4efk", "njg75f9a"]
 
+# 図はリポジトリ (public) の commit 固定 raw URL で埋め込む (ブランチ削除後も安定)
+FIG_BASE = (
+    "https://raw.githubusercontent.com/sugiyama34/fast_suisho/"
+    "98862d055ae345d93069174b3148f17b9ef5d9ae/experiments/006-standard-epoch/figures"
+)
+
 runset = wr.Runset(
     entity=ENTITY,
     project=PROJECT,
@@ -54,6 +60,9 @@ blocks = [
         "- **standard-epoch (周)**: 教師全体 1 周 = 奏乗全 30 ファイル = 14,668,949,437 局面"
     ),
     wr.H1("学習量 → Elo カーブ (全 17 点, 各 50 ペア固定)"),
+    wr.Image(
+        url=f"{FIG_BASE}/elo_curves.png", caption="3 系列 (sb=12/108/367) の 学習量 → Elo カーブ"
+    ),
     wr.MarkdownBlock(
         "**sb=108 (やねうらお氏実設定系列)**\n\n"
         "| ep | 局面 (周) | Elo | 95% CI |\n| --- | --- | --- | --- |\n"
@@ -72,6 +81,10 @@ blocks = [
     ),
     wr.PanelGrid(runsets=[runset], panels=panels),
     wr.H1("学習指標は Elo の代理になるか (17 checkpoint の散布図行列)"),
+    wr.Image(
+        url=f"{FIG_BASE}/metric_proxy_scatter.png",
+        caption="train loss / test loss / test accuracy / Elo の散布図行列 (色 = sb 系列)",
+    ),
     wr.MarkdownBlock(
         "| 指標 | 全 17 点 (Elo −636〜−104) | acc ≥ 0.70 の 8 点 (Elo −263〜−104) |\n"
         "| --- | --- | --- |\n"
