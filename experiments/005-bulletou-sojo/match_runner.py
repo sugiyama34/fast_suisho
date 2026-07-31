@@ -223,20 +223,33 @@ def main() -> None:
     ap.add_argument("--threads", type=int, default=16)
     ap.add_argument("--hash-mb", type=int, default=1024)
     ap.add_argument("--max-pairs", type=int, default=500)
+    ap.add_argument(
+        "--fixed-pairs",
+        action="store_true",
+        help="SPRT 判定で打ち切らず --max-pairs まで対局する (Elo カーブの点推定用)",
+    )
+    ap.add_argument(
+        "--games-dir",
+        default=str(HERE / "games"),
+        help="出力先ベースディレクトリ (games/<name>/)。他実験から使う場合に指定",
+    )
     ap.add_argument("--max-plies", type=int, default=320)
     ap.add_argument("--elo0", type=float, default=-30.0)
     ap.add_argument("--elo1", type=float, default=0.0)
     ap.add_argument("--start-pair", type=int, default=0, help="再開用: このペア番号から始める")
     args = ap.parse_args()
 
-    out_dir = HERE / "games" / args.name
+    out_dir = Path(args.games_dir) / args.name
     out_dir.mkdir(parents=True, exist_ok=True)
     games_path = out_dir / "games.jsonl"
     summary_path = out_dir / "summary.json"
 
     with open(args.book) as fh:
         sfens = [line.strip().removeprefix("sfen ").strip() for line in fh if line.strip()]
-    sfens = sfens[: args.max_pairs]
+    if not args.fixed_pairs:
+        sfens = sfens[: args.max_pairs]
+    # --fixed-pairs では全 sfen を候補に残し、エンジン障害でペアが落ちても
+    # 後続の局面で補充して「ちょうど max_pairs ペア」を満たす
 
     sprt = PentanomialSprt(elo0=args.elo0, elo1=args.elo1)
     # 再開: 既存 games.jsonl から完結ペア (2 局揃い) だけ再構築する。
@@ -292,6 +305,8 @@ def main() -> None:
     games_fh = games_path.open("a")
     try:
         for i, sfen in enumerate(sfens):
+            if args.fixed_pairs and sprt.n_pairs >= args.max_pairs:
+                break
             if i < args.start_pair or i in done_recs:
                 continue
             recs: list[dict] = []
@@ -340,7 +355,7 @@ def main() -> None:
                 f"{summary['sprt']}",
                 flush=True,
             )
-            if summary["sprt"] != "continue":
+            if summary["sprt"] != "continue" and not args.fixed_pairs:
                 print(f"SPRT decision: {summary['sprt']}", flush=True)
                 break
     finally:
