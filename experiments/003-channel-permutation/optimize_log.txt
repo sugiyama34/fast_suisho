@@ -1,0 +1,7 @@
+samples (half-vectors): 1069254, channel nonzero rate mean: 0.2923
+chunk nonzero rate (identity): 0.7436
+chunk nonzero rate (greedy, full set): 0.5448
+hill_climb: accepted 178/60000 swaps
+chunk nonzero rate (greedy+swap, full set): 0.5376
+relative reduction vs identity: 27.7%
+wrote experiments/003-channel-permutation/perm.npy

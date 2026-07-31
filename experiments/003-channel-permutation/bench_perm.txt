@@ -1,0 +1,13 @@
+engine        : /home/sugiyama/engines/baseline-000/YaneuraOu-by-gcc
+engine sha256 : 312b1368348e83fe546f45983e49bd354636609b1ad4857a033c4ab0e4aafff6
+eval sha256   : 738cbaa230363e6adfc96e6c7fa428f963aab4bd1db6592868885b93ba9ae35d
+conditions    : movetime 10000ms x 4 positions, hash 1024MB, repeats 9
+cpu           : AMD EPYC 7302 16-Core Processor
+governor      : schedutil / boost: 1
+loadavg(pre)  : 15.41 11.39 5.89
+
+threads  nps_median   nps_min-max            nodes_median
+1        472288       468459-477626          18892957
+16       7203284      7121315-7251249        288174593
+
+loadavg(post) : 15.19 12.09 7.96

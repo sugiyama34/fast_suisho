@@ -1,0 +1,69 @@
+diff --git a/source/eval/nnue/layers/affine_transform_sparse_input_explicit.h b/source/eval/nnue/layers/affine_transform_sparse_input_explicit.h
+index f08a98a6..f5992386 100644
+--- a/source/eval/nnue/layers/affine_transform_sparse_input_explicit.h
++++ b/source/eval/nnue/layers/affine_transform_sparse_input_explicit.h
+@@ -12,9 +12,54 @@
+ #include "affine_transform.h" // For affine_transform_unaligned
+ #include "simd.h"
+ 
++// ---- fast_suisho experiment-003: fc_0 入力の非ゼロマスク収集 (一時計測パッチ) ----
++// FT_STATS_FILE 環境変数が設定されているときだけ有効。Threads=1 での実行前提 (排他なし)。
++// サンプリング間隔は FT_STATS_EVERY (デフォルト 16 call に 1 回)。
++// 1 サンプル = 128 バイト (1024 bit little-endian: bit j = input[j] != 0)。
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++#include <vector>
++
+ namespace YaneuraOu {
+ namespace Eval::NNUE::Layers {
+ 
++namespace FtStats {
++struct Collector {
++    std::vector<std::uint64_t> masks;
++    std::uint64_t calls = 0;
++    unsigned every = 16;
++    const char* path = nullptr;
++    Collector() {
++        path = std::getenv("FT_STATS_FILE");
++        if (const char* e = std::getenv("FT_STATS_EVERY"))
++            if (std::atoi(e) >= 1)
++                every = unsigned(std::atoi(e));
++    }
++    ~Collector() {
++        if (!path || masks.empty())
++            return;
++        if (FILE* f = std::fopen(path, "wb")) {
++            std::fwrite(masks.data(), sizeof(std::uint64_t), masks.size(), f);
++            std::fclose(f);
++            std::fprintf(stderr, "FtStats: wrote %zu samples to %s\n", masks.size() / 16, path);
++        }
++    }
++    void record(const std::uint8_t* input) {
++        if (!path || calls++ % every)
++            return;
++        std::uint64_t m[16];
++        std::memset(m, 0, sizeof(m));
++        for (unsigned j = 0; j < 1024; ++j)
++            if (input[j])
++                m[j >> 6] |= 1ULL << (j & 63);
++        masks.insert(masks.end(), m, m + 16);
++    }
++};
++inline Collector collector;
++}  // namespace FtStats
++// ---- end experiment-003 patch ----
++
+ #if defined(USE_SSSE3) || USE_NEON >= 8
+ 
+ alignas(kCacheLineSize) static inline const
+@@ -176,6 +221,9 @@ public:
+ 
+         // Forward propagation
+         void Propagate(const InputType* input, OutputType* output) const {
++                // fast_suisho experiment-003 計測パッチ (FT_STATS_FILE 未設定なら no-op)
++                if constexpr (kInputDimensions == 1024)
++                        FtStats::collector.record(input);
+ #if defined(USE_WASM_SIMD)
+                 {
+                         constexpr int n = kInputDimensions;
