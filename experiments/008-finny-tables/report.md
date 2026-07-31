@@ -72,7 +72,10 @@ biases + 40 列の加算 (258 MiB の重みテーブルから 80KB ストリー�
 - キャッシュ実装は `RawFeatures == FeatureSet<HalfKA2<kFriend>>` (refresh trigger 1 個)
   のときだけ `if constexpr` で有効化。他の特徴量セット (halfkp 等) は従来コードのまま
 - 評価関数パラメータの読み直し (`LoadAndShare`) で世代カウンタを進め、スレッドローカル
-  キャッシュ側が世代不一致を検出したら全エントリを無効化 (nn.bin 差し替え対応)
+  キャッシュ側が世代不一致を検出したら全エントリを無効化 (nn.bin 差し替え対応)。
+  世代カウンタは relaxed で、**読み直し中に並行して評価が走らないこと** (USI では
+  isready 中は探索停止) を前提とする。学習器など別経路でこの前提を破ると、旧重みで
+  作られたエントリ + 新重みの差分列という壊れた accumulator がキャッシュに残りうる
 - `HalfKA2::MakeIndex` はキャッシュ側からも呼ぶため定義を .cpp からヘッダに移動 (同一定義)
 
 ### 同梱した等価修正 2 件
@@ -82,8 +85,12 @@ biases + 40 列の加算 (258 MiB の重みテーブルから 80KB ストリー�
    memmove 3.6% のうち約 3.5pt が update/refresh 経路の accumulator コピーと
    特定されていたものの主因
 2. **`reset[2]` の未初期化読み取り修正**: `AppendChangedIndices` は `dirty_num == 0`
-   (null move) のとき `reset[]` を書かずに return するため、未初期化のまま参照されていた
-   (どちらに転んでも評価値は正しいが UB)。`{false, false}` で初期化
+   のとき `reset[]` を書かずに return するため、未初期化のまま参照されうる。
+   実際には `do_null_move` は StateInfo を memcpy するため `dirtyPiece` は親のものを
+   継承し (`dirty_num` は 1 か 2)、`dirty_num == 0` はルート局面のみ = 常に refresh
+   経路に入るので、この読み取りは現行コードでは到達しないと思われる (レビューで確認)。
+   防御的に `{false, false}` で初期化しておく (仮に到達してゴミが true に転ぶと、
+   ベースライン実装では biases のみの accumulator になり評価値が壊れる箇所だった)
 
 ## セットアップ
 
@@ -132,6 +139,9 @@ experiment-003 で確立した決定的探索 searchlog 方式 (V9.60 の `eval`
 対計測 (`bench_paired.sh`): 2 バイナリを交互に実行し、周波数ドリフト等をペア内で相殺。
 bench はやねうら王デフォルト 4 局面 × movetime 10 秒, hash 1024MB。生ログは
 `bench_paired_*.txt` (エンジン sha256・governor・loadavg を記録)。
+注: ログ中のエンジンのパス名は計測時点のもので、アーカイブの最終名と異なる場合がある
+(finny-only は計測時 `YaneuraOu-by-gcc`、アーカイブでは `-finny-only` に改名)。
+ログ先頭の sha256 prefix (`8e07…` = finny-only / `4881…` = 最終版) が正である。
 
 ### 1 スレッド
 
