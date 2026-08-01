@@ -1,6 +1,7 @@
 #!/bin/bash
 # 対計測 (experiment-008): baseline / finny の 2 バイナリで bench を交互に実行し、
 # ペアごとの NPS 差を出す。周波数ドリフト・温度などの時間変動をペア内で相殺する。
+# ペア内の実行順は AB/BA を交互に切り替え、順序効果も相殺する (Codex レビュー指摘の反映)。
 # experiment-003 の bench_paired.sh の binary A/B 版 (あちらは同一バイナリで評価関数 A/B)。
 #
 # Usage: ./bench_paired.sh [pairs] [movetime_ms]
@@ -34,15 +35,22 @@ run_once() { # $1=engine -> echoes nps
   echo "${nps:-ERR}"
 }
 
-printf '%-6s %-12s %-12s %s\n' "pair" "nps_base" "nps_finny" "delta_pct"
+printf '%-6s %-6s %-12s %-12s %s\n' "pair" "order" "nps_base" "nps_finny" "delta_pct"
 for i in $(seq "$PAIRS"); do
-  a=$(run_once "$ENGINE_A")
-  b=$(run_once "$ENGINE_B")
+  if [ $((i % 2)) -eq 1 ]; then
+    order=AB
+    a=$(run_once "$ENGINE_A")
+    b=$(run_once "$ENGINE_B")
+  else
+    order=BA
+    b=$(run_once "$ENGINE_B")
+    a=$(run_once "$ENGINE_A")
+  fi
   if [ "$a" = ERR ] || [ "$b" = ERR ]; then
-    printf '%-6s %-12s %-12s %s\n' "$i" "$a" "$b" ERR
+    printf '%-6s %-6s %-12s %-12s %s\n' "$i" "$order" "$a" "$b" ERR
     continue
   fi
-  printf '%-6s %-12s %-12s %s\n' "$i" "$a" "$b" \
+  printf '%-6s %-6s %-12s %-12s %s\n' "$i" "$order" "$a" "$b" \
          "$(awk -v a="$a" -v b="$b" 'BEGIN { printf "%+.3f%%", (b - a) / a * 100 }')"
 done
 echo
