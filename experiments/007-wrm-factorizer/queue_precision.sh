@@ -10,6 +10,12 @@ GAMES_DIR="$REPO/experiments/007-wrm-factorizer/games"
 PY="$REPO/data/matchenv/bin/python"
 
 PATTERN="007-ctrl-ep16-remeasure"
+# 起動レースを避ける: 先行プロセスがまだ見えないうちは待たずにエラーにする
+# (queue_arms.sh と同じ guard。codex review 指摘)
+if ! pgrep -f "$PATTERN" > /dev/null; then
+  echo "error: 先行プロセス ($PATTERN) が見つからない" >&2
+  exit 1
+fi
 echo "[queue precision] waiting for '$PATTERN' ($(date))"
 while pgrep -f "$PATTERN" > /dev/null; do sleep 30; done
 echo "[queue precision] remeasure finished ($(date))"

@@ -10,7 +10,7 @@
     "local_patch": "crates/cuda_cpp/build.rs: -gencode sm_120/compute_120 (exp-005 由来)",
     "build": "cargo build --release --example bulletou --features cuda-cpp-backend (CUDA_PATH=/usr/local/cuda, nvcc on PATH 必須)"
   },
-  "hardware": "NVIDIA RTX PRO 5000 Blackwell x2 (driver 610.43.02, CUDA 13.3)",
+  "hardware": "NVIDIA RTX PRO 5000 Blackwell x3 (driver 610.43.02, CUDA 13.3; GPU2 は 2026-07-31 のスループット検証後に採用), CPU 16 cores",
   "teacher": "data/teacher/sojo/train (30 files, 14,668,949,437 局面, manifest 検証済み)",
   "test_teacher": "data/teacher/floodgate/floodgate.hcpe (300k sample, validation-rate 4sb)",
   "seeds": "BulletOu 固定シード (決定的学習, 005 で確認)",

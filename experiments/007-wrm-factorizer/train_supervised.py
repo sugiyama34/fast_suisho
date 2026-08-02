@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import os
 import signal
 import subprocess
 import sys
@@ -123,7 +124,12 @@ def main() -> None:
         def forward_signal(_signum, _frame) -> None:
             nonlocal cancelled
             cancelled = True
-            proc.terminate()
+            # start_new_session で起動しているため proc.terminate() (bash のみ) では
+            # bulletou/tee が生き残る (codex review 指摘)。プロセスグループごと止める
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
 
         signal.signal(signal.SIGTERM, forward_signal)
         signal.signal(signal.SIGINT, forward_signal)

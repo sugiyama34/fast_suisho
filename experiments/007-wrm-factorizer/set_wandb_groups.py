@@ -36,6 +36,18 @@ def main() -> None:
         if run.group:
             print("    -> 既に group あり、スキップ")
             continue
+        # 安全弁 (codex review 指摘): 007 以降の run は作成時に group が付くため、
+        # 万一 group 無しでも本スクリプトで 006 group を誤付与しない
+        if run.name.startswith("007") or (run.job_type or "") in {
+            "ctrl",
+            "wrm",
+            "nofact",
+            "both",
+            "lr1shot",
+            "wrmshot",
+        }:
+            print("    -> 007 系 run のため対象外、スキップ")
+            continue
         run.group = TARGET_GROUP
         run.update()
         print(f"    -> group={TARGET_GROUP} を設定")

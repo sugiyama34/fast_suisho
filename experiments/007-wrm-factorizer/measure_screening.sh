@@ -47,7 +47,11 @@ for point in $POINTS; do
     echo "[skip] $dir/nn.bin がまだ無い"
     continue
   fi
-  if [ -f "$GAMES_DIR/$name/summary.json" ]; then
+  # summary.json はペアごとに逐次更新されるため、存在だけでは「測定済み」に
+  # ならない (codex review 指摘)。ペア数が目標に達している場合のみ skip し、
+  # 中断された点は match_runner の resume で続きから測定する
+  if [ -f "$GAMES_DIR/$name/summary.json" ] && \
+     [ "$(python3 -c "import json; print(json.load(open('$GAMES_DIR/$name/summary.json'))['pairs'])")" -ge "$PAIRS" ]; then
     echo "[skip] $name は測定済み"
     continue
   fi
