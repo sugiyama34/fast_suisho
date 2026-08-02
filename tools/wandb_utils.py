@@ -99,6 +99,7 @@ def init_run(
     *,
     job_type: str = "train",
     tags: list[str] | None = None,
+    group: str | None = None,
     smoke: bool = False,
     log_dir: Path | None = None,
 ) -> Iterator[RunHandle]:
@@ -108,6 +109,8 @@ def init_run(
         experiment: 実験フォルダ名 (例: "003-quantize")。run 名と tag に使う。
         config: ハイパーパラメータ等。
         job_type: "train" / "eval" / "bench" など。
+        group: W&B の run group。1 project = 実験系列、1 group = 1 実験の規約
+            (2026-07-31 決定) では実験フォルダ名を渡す。
         smoke: True なら動作確認モード (mode="disabled"、クラウドに一切送らない)。
         log_dir: ローカル JSONL の出力先。省略時は experiments/<experiment>/。
     """
@@ -129,6 +132,7 @@ def init_run(
         project=os.environ.get("WANDB_PROJECT", DEFAULT_PROJECT),
         name=run_name,
         job_type=job_type,
+        group=group,
         tags=[experiment, *(tags or [])],
         config=config,
         mode=mode,

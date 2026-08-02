@@ -25,7 +25,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections import Counter
+from collections import Counter, deque
 from pathlib import Path
 
 import cshogi
@@ -50,6 +50,10 @@ class UsiEngine:
         stderr_path: Path | None = None,
     ):
         self.spawn_args = (binary, evaldir, threads, hash_mb, max_moves, stderr_path)
+        # silent crash 調査用 (repo issue 参照): どちら側が・どの exit code で・
+        # 何を最後に出力して死んだかを記録する。挙動には影響しない
+        self.label = "cand" if stderr_path and "cand" in stderr_path.name else "base"
+        self.recent_stdout: deque[str] = deque(maxlen=8)
         stderr_fh = stderr_path.open("a") if stderr_path else subprocess.DEVNULL
         self.proc = subprocess.Popen(
             [binary],
@@ -90,15 +94,22 @@ class UsiEngine:
         except OSError as err:
             # エンジンがアイドル中に死んでいた場合、書き込み側で BrokenPipeError が
             # 出る。呼び出し元の respawn リトライに乗せるため RuntimeError に揃える
-            raise RuntimeError(f"engine died (write failed: {err})") from err
+            raise RuntimeError(f"engine died ({self._death_info()}; write failed: {err})") from err
+
+    def _death_info(self) -> str:
+        """死亡時の診断情報 (silent crash 調査用)。exit code が負なら signal 死、
+        0 なら自発 exit (プロトコル系) の可能性が高い。"""
+        tail = " | ".join(s.strip() for s in list(self.recent_stdout)[-3:])
+        return f"side={self.label} exit_code={self.proc.poll()} last_stdout=[{tail}]"
 
     def _start_reader(self) -> None:
         """stdout をスレッドで読み queue に流す。blocking readline だと
         エンジンが無出力でハングした際にタイムアウトを検出できないため。"""
         assert self.proc.stdout is not None
 
-        def pump(stdout=self.proc.stdout, q=self._lines) -> None:
+        def pump(stdout=self.proc.stdout, q=self._lines, recent=self.recent_stdout) -> None:
             for line in stdout:
+                recent.append(line)
                 q.put(line)
             q.put(None)  # EOF
 
@@ -110,7 +121,12 @@ class UsiEngine:
         except queue.Empty:
             raise TimeoutError("engine produced no output before deadline") from None
         if line is None:
-            raise RuntimeError("engine died")
+            # exit code 確定を少し待つ (EOF 直後は reap 前で None になり得る)
+            try:
+                self.proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                pass
+            raise RuntimeError(f"engine died ({self._death_info()})")
         return line
 
     def _wait(self, token: str, timeout: float) -> None:
@@ -159,6 +175,7 @@ def play_game(
     cand_is_black: bool,
     movetime_ms: int,
     max_plies: int,
+    nodes_out: dict[str, list[int]] | None = None,
 ) -> tuple[float, str, int]:
     """1 局対局し (候補側得点 1/0.5/0, 終局理由, 手数) を返す。
 
@@ -196,7 +213,10 @@ def play_game(
         pos = f"position sfen {start_sfen}"
         if moves:
             pos += " moves " + " ".join(moves)
-        mv, _ = engine.bestmove(pos, movetime_ms)
+        mv, nodes = engine.bestmove(pos, movetime_ms)
+        # 校正監視用 (CPU 負荷混入の検出): 実測 nodes/move を記録する
+        if nodes_out is not None and nodes is not None:
+            nodes_out["cand" if stm_is_cand else "base"].append(nodes)
         if mv == "resign":
             return (0.0 if stm_is_cand else 1.0), "resign", len(moves)
         if mv == "win":  # 入玉宣言
@@ -310,13 +330,25 @@ def main() -> None:
             if i < args.start_pair or i in done_recs:
                 continue
             recs: list[dict] = []
-            for attempt in (1, 2):
+            # 3 回試行: エンジン silent crash (issue #18) の頻度上昇 (2026-08-02,
+            # ~10%/pair) に対し skip 率を p^2 → p^3 に抑える。挙動はリトライ回数のみ
+            for attempt in (1, 2, 3):
                 try:
                     recs = []
                     for cand_is_black in (True, False):
+                        nodes_log: dict[str, list[int]] = {"cand": [], "base": []}
                         score, reason, plies = play_game(
-                            cand, base, sfen, cand_is_black, args.movetime, args.max_plies
+                            cand,
+                            base,
+                            sfen,
+                            cand_is_black,
+                            args.movetime,
+                            args.max_plies,
+                            nodes_out=nodes_log,
                         )
+                        med = {
+                            k: (sorted(v)[len(v) // 2] if v else None) for k, v in nodes_log.items()
+                        }
                         recs.append(
                             {
                                 "pair": i,
@@ -326,6 +358,9 @@ def main() -> None:
                                 "plies": plies,
                                 "sfen": sfen,
                                 "time": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                                # 校正監視: 実測 nodes/move の中央値 (CPU 負荷混入検出用)
+                                "cand_nodes_med": med["cand"],
+                                "base_nodes_med": med["base"],
                             }
                         )
                     break

@@ -1,0 +1,41 @@
+{
+  "experiment": "007-wrm-factorizer",
+  "status": "phase2-complete (report done; phase3 = wrm x lr1shot 提案中)",
+  "headline": "wrm ep20 = +104 Elo vs Suisho 11 [CI +69,+140] n=200; 直接 SPRT vs 006 net = +283, H1 受理 (32 ペア)",
+  "started": "2026-07-31T18:00:00+09:00",
+  "repo_commit": "81a3ef7 (main) + uncommitted: experiments/007-wrm-factorizer/*, tools/wandb_utils.py (group param)",
+  "trainer": {
+    "name": "BulletOu",
+    "commit": "2a8e5ed (origin/shogi-support, 'Use tatara-style WRM loss options')",
+    "local_patch": "crates/cuda_cpp/build.rs: -gencode sm_120/compute_120 (exp-005 由来)",
+    "build": "cargo build --release --example bulletou --features cuda-cpp-backend (CUDA_PATH=/usr/local/cuda, nvcc on PATH 必須)"
+  },
+  "hardware": "NVIDIA RTX PRO 5000 Blackwell x2 (driver 610.43.02, CUDA 13.3)",
+  "teacher": "data/teacher/sojo/train (30 files, 14,668,949,437 局面, manifest 検証済み)",
+  "test_teacher": "data/teacher/floodgate/floodgate.hcpe (300k sample, validation-rate 4sb)",
+  "seeds": "BulletOu 固定シード (決定的学習, 005 で確認)",
+  "wandb": {
+    "entity": "suisho",
+    "project": "20260728_BulletOu_with_Sojo_data",
+    "group": "007-wrm-factorizer"
+  },
+  "arms": {
+    "ctrl": {"gpu": 0, "launched": "2026-07-31 18:47 JST", "finished": "2026-08-01 07:02 JST rc=0"},
+    "lr1shot": {"gpu": 1, "launched": "2026-07-31 18:47 JST", "finished": "2026-08-01 07:02 JST rc=0"},
+    "wrm": {"gpu": 2, "launched": "2026-07-31 18:53 JST (GPU2 スループット検証の結果そのまま採用)", "finished": "2026-08-01 07:07 JST rc=0"},
+    "nofact": {"gpu": 0, "launched": "2026-08-01 07:02 JST (queue 自動起動)"},
+    "both": {"gpu": 1, "launched": "2026-08-01 07:02 JST (queue 自動起動)"}
+  },
+  "phase2_screening": {
+    "started": "2026-08-01 18:01 JST",
+    "points": "006-yane20/0016 再アンカー + 5 arm × ep16/ep20 = 11 点 × 50 ペア",
+    "engine_sha256": "4881fcf42afd6aef31f3db825e2d2901b55ac5e7e76bc9085fe89aeb27b8ee6c (2026-07-31 18:52 再ビルド — 006 測定時の 87857ca8 とは別バイナリ。旧バイナリは消失)",
+    "calibration": "movetime 240ms / 16 threads で median 2.44M nodes/move (006 時の ~2.0M より +22%。エンジン更新 or 完全アイドルの差。006 との絶対比較は再アンカー点経由で行う)"
+  },
+  "notes": [
+    "lr1shot の自動 gamma = (30/875)^(1/2160) ≈ 0.99844 (コードで検証済み)",
+    "スループット実測 (wall, 2026-07-31 19:00): 2 arm 同時 = 計 4.32M pos/s、3 arm 同時 = 計 5.60M pos/s (+30%) → GPU2 使用を採用。progress log の pos_per_sec 列は GPU 計算時間ベースでローダ待ちを含まない (wall はその ~40%) 点に注意",
+    "CPU 16 core をユーザーの別実験 (YaneuraOu, ~1 core) と共有。ローダ律速のため per-arm wall ≈ 1.87M pos/s (3 arm 時) / 2.16M (2 arm 時)",
+    "ETA: round1 (ctrl+lr1shot+wrm) ≈ 12.8h → round2 (nofact+both) ≈ 11.1h、フェーズ1 完了 ≈ 24h (8/1 夜)"
+  ]
+}
