@@ -1,7 +1,8 @@
 {
   "experiment": "007-wrm-factorizer",
-  "status": "phase2-complete (report done; phase3 = wrm x lr1shot 提案中)",
-  "headline": "wrm ep20 = +104 Elo vs Suisho 11 [CI +69,+140] n=200; 直接 SPRT vs 006 net = +283, H1 受理 (32 ペア)",
+  "status": "COMPLETE (phase3 done 2026-08-03)",
+  "headline": "最終推奨 = wrm ep20 (+104 Elo vs Suisho 11 [CI +69,+140] n=200)。phase3 wrmshot は上積みなし (vs wrm20 直接 SPRT H0 受理, -37 [−102,+25] 66ペア)",
+  "finished": "2026-08-03 04:3x JST",
   "started": "2026-07-31T18:00:00+09:00",
   "repo_commit": "81a3ef7 (main) + uncommitted: experiments/007-wrm-factorizer/*, tools/wandb_utils.py (group param)",
   "trainer": {
@@ -24,7 +25,8 @@
     "lr1shot": {"gpu": 1, "launched": "2026-07-31 18:47 JST", "finished": "2026-08-01 07:02 JST rc=0"},
     "wrm": {"gpu": 2, "launched": "2026-07-31 18:53 JST (GPU2 スループット検証の結果そのまま採用)", "finished": "2026-08-01 07:07 JST rc=0"},
     "nofact": {"gpu": 0, "launched": "2026-08-01 07:02 JST (queue 自動起動)"},
-    "both": {"gpu": 1, "launched": "2026-08-01 07:02 JST (queue 自動起動)"}
+    "both": {"gpu": 1, "launched": "2026-08-01 07:02 JST (queue 自動起動)"},
+    "wrmshot": {"gpu": 0, "launched": "2026-08-02 14:20 JST (phase3)", "finished": "2026-08-03 01:29 JST rc=0"}
   },
   "phase2_screening": {
     "started": "2026-08-01 18:01 JST",

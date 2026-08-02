@@ -27,6 +27,7 @@ ARMS = [
     ("nofact (factorizer none)", "007-nofact-ep{ep}-vs-suisho11", "#1baf7a"),
     ("both (wrm+nofact)", "007-both-ep{ep}-vs-suisho11", "#eda100"),
     ("lr1shot (single anneal)", "007-lr1shot-ep{ep}-vs-suisho11", "#e87ba4"),
+    ("wrmshot (wrm x anneal, phase3)", "007-wrmshot-ep{ep}-vs-suisho11", "#008300"),
 ]
 ANCHOR = ("006 net re-anchor", "006-yane-ep16-reanchor-vs-suisho11", "#6f6e66")
 
