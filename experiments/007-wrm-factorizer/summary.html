@@ -55,15 +55,17 @@
 </style>
 <main>
   <div class="card" style="border-color: var(--bad);">
-    <strong style="color: var(--bad);">⚠ 追記 (2026-08-04): FV_SCALE 交絡。</strong>
-    本ページの Elo は全て「両陣営 FV_SCALE=16」条件下の数字。たややん氏の外部計測 (2181 局) では
-    本 net は水匠11 に <span style="font-variant-numeric: tabular-nums;">−58.9 [−74.4, −43.7]</span> で劣った。
-    評価関数ごとに適正 FV_SCALE が異なり (水匠 ≈40 / 本 net ≈28)、default 16 では水匠側がより不利になる。
-    per-net FV_SCALE 調整後の再測定を 008 で実施予定。詳細は report.md 追記を参照。
+    <strong style="color: var(--bad);">⚠ 訂正 (2026-08-05): FV_SCALE 交絡を検証し、結論を訂正。</strong>
+    下の図表の Elo は「両陣営 FV_SCALE=16」条件の数字で、スケール適合度の差を含む。
+    適正スケール (評価値分布フィット: WRM 系 ≈25 / sigmoid 系 ≈52 / 水匠 =40) での再測定の結果:
+    本 net は水匠11 に <span style="font-variant-numeric: tabular-nums;">−41 [−74, −9]</span>
+    (たややん氏の外部計測 −58.9 と再現一致)、ctrl は −119 [−156, −85]、
+    <strong>WRM loss の真の効果は直接対局で +54 [+20, +90]</strong> — 「+280」の
+    ~200 Elo 分はアーティファクトだったが、効果自体は本物。詳細は report.md 追記。
   </div>
   <header>
     <div class="eyebrow">fast_suisho · experiment 007 · 2026-07-31 → 08-03</div>
-    <h1>tatara 式 WRM loss 一つで、奏乗レシピは水匠11 を超えた (FV_SCALE=16 条件)</h1>
+    <h1>tatara 式 WRM loss は本物の +54 Elo — ただし「水匠11 超え」は FV_SCALE 交絡だった</h1>
     <p class="lede">やねうらお氏の 3 提案 + LR 単発アニールを 5 arm 統制比較 (全 arm 864 億局面) で Elo 検証。
     決め手は <code>--win-rate-model --loss-pow-exp 2.5</code> のみ。</p>
   </header>
