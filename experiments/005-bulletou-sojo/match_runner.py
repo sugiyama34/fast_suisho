@@ -48,8 +48,9 @@ class UsiEngine:
         hash_mb: int,
         max_moves: int,
         stderr_path: Path | None = None,
+        fv_scale: int | None = None,
     ):
-        self.spawn_args = (binary, evaldir, threads, hash_mb, max_moves, stderr_path)
+        self.spawn_args = (binary, evaldir, threads, hash_mb, max_moves, stderr_path, fv_scale)
         # silent crash 調査用 (repo issue 参照): どちら側が・どの exit code で・
         # 何を最後に出力して死んだかを記録する。挙動には影響しない
         self.label = "cand" if stderr_path and "cand" in stderr_path.name else "base"
@@ -83,6 +84,10 @@ class UsiEngine:
             ("MaxMovesToDraw", 0),
         ]:
             self._send(f"setoption name {name} value {value}")
+        # FV_SCALE: 評価関数ごとに適正値が異なる (issue #18 とは別件、たややん氏
+        # 指摘 2026-08-04)。未指定ならエンジン default (16) のまま = 005-007 の従来条件
+        if fv_scale is not None:
+            self._send(f"setoption name FV_SCALE value {fv_scale}")
         self._send("isready")
         self._wait("readyok", timeout=120)  # nn.bin 135MB のロード待ち
 
@@ -257,6 +262,18 @@ def main() -> None:
     ap.add_argument("--elo0", type=float, default=-30.0)
     ap.add_argument("--elo1", type=float, default=0.0)
     ap.add_argument("--start-pair", type=int, default=0, help="再開用: このペア番号から始める")
+    ap.add_argument(
+        "--cand-fv-scale",
+        type=int,
+        default=None,
+        help="候補側 FV_SCALE (未指定=エンジン default 16)",
+    )
+    ap.add_argument(
+        "--base-fv-scale",
+        type=int,
+        default=None,
+        help="基準側 FV_SCALE (未指定=エンジン default 16)",
+    )
     args = ap.parse_args()
 
     out_dir = Path(args.games_dir) / args.name
@@ -310,6 +327,7 @@ def main() -> None:
                 args.hash_mb,
                 args.max_plies,
                 stderr_path=out_dir / "engine-cand.stderr.log",
+                fv_scale=args.cand_fv_scale,
             ),
             UsiEngine(
                 args.engine,
@@ -318,6 +336,7 @@ def main() -> None:
                 args.hash_mb,
                 args.max_plies,
                 stderr_path=out_dir / "engine-base.stderr.log",
+                fv_scale=args.base_fv_scale,
             ),
         )
 
@@ -383,6 +402,10 @@ def main() -> None:
             games_fh.flush()
             sprt.add_pair(pair_score)
             summary = sprt.summary()
+            summary["fv_scale"] = {
+                "cand": args.cand_fv_scale or 16,
+                "base": args.base_fv_scale or 16,
+            }
             summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=1))
             print(
                 f"pair {i + 1}: score={pair_score} | n={summary['pairs']} "

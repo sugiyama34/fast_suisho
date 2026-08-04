@@ -1,0 +1,42 @@
+{
+ "anchor": {
+  "suisho11": 40
+ },
+ "band_cp": [
+  30,
+  1500
+ ],
+ "n_positions": 10000,
+ "fit": {
+  "suisho11": {
+   "slope": 1.0,
+   "fv_scale": 40,
+   "n_used": null
+  },
+  "007-wrm-ep20": {
+   "slope": 0.6224,
+   "fv_scale": 24.9,
+   "n_used": 7891
+  },
+  "007-ctrl-ep20": {
+   "slope": 1.2962,
+   "fv_scale": 51.8,
+   "n_used": 7891
+  },
+  "006-yane-ep16": {
+   "slope": 1.3219,
+   "fv_scale": 52.9,
+   "n_used": 7891
+  },
+  "007-wrmshot-ep20": {
+   "slope": 0.6227,
+   "fv_scale": 24.9,
+   "n_used": 7891
+  },
+  "007-lr1shot-ep20": {
+   "slope": 1.314,
+   "fv_scale": 52.6,
+   "n_used": 7891
+  }
+ }
+}
