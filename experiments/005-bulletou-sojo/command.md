@@ -56,4 +56,4 @@ cargo build --release -p bulletou_lib --features cuda-cpp-backend --example bull
 - checkpoint: `data/bulletou/checkpoints/005-<arm>/` (`summary-learn.log` + `0NNN/nn.bin`)
 - 学習 stdout ログ: `experiments/005-bulletou-sojo/logs/<arm>.log`
 - メトリクス JSONL: `experiments/005-bulletou-sojo/metrics-*.jsonl` (wandb 二重記録)
-- 教師データ: `data/teacher/sojo/` (`download.sh` で取得。train 001–016 + test 030)
+- 教師データ: `data/teacher/sojo/` (当時は git 管理外の `download.sh` で取得。train 001–016 + test 030。現在は `scripts/fetch_teacher.sh` で全 30 ファイルを取得する)

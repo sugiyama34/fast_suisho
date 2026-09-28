@@ -1,0 +1,15 @@
+diff --git a/crates/cuda_cpp/build.rs b/crates/cuda_cpp/build.rs
+index 87d306f..259d5cb 100644
+--- a/crates/cuda_cpp/build.rs
++++ b/crates/cuda_cpp/build.rs
+@@ -45,5 +45,10 @@ fn main() {
+     build.flag("-std=c++17");
+     build.flag("-O3");
+     build.flag("--use_fast_math");
++    // Local patch (fast_suisho experiment 005): emit native SASS for the RTX PRO
++    // 5000 Blackwell (sm_120) plus PTX for forward compatibility. The upstream
++    // default nvcc target only embeds sm_75, forcing a JIT compile at startup.
++    build.flag("-gencode").flag("arch=compute_120,code=sm_120");
++    build.flag("-gencode").flag("arch=compute_120,code=compute_120");
+     build.compile("bulletou_cuda_cpp_backend");
+ }

@@ -24,6 +24,10 @@ fast_suisho/
 |---|---|---|
 | `../YaneuraOu` | やねうら王 engine source (github.com/yaneurao/YaneuraOu) | commit `9133c527` (V9.60) |
 | `../suisho11`  | Suisho 11 `nn.bin` (135 MB) + `sfnnwop-1536.h` | - |
+| `data/teacher/` | 奏乗教師 (約 587 GB) + floodgate.hcpe。`scripts/fetch_teacher.sh` で取得 | sha256: `scripts/teacher_sojo.sha256` |
+| `data/bulletou/BulletOu` | BulletOu トレーナ (github.com/yaneurao/BulletOu) | commit `2a8e5ed` + `experiments/005-bulletou-sojo/bulletou-sm120.patch` |
+
+新しいマシンでの環境構築は `docs/SETUP.md`、学習トラックの概要は `docs/TRAINING.md` を参照。
 
 ## Architecture of Suisho 11 nn.bin
 
