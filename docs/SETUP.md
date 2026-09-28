@@ -80,7 +80,12 @@ cd source && make clean && make -j"$(nproc)" normal ...(上と同じ引数)
 
 - `~/suisho11/nn.bin` (135 MB) と `sfnnwop-1536.h`
 - sha256: `a78b7f889843037d344f482623b3febd124ead5c1f34f134d9f1c2c78cd0f829`
-- **入手元の URL はリポジトリに記録されていない**。旧開発機からコピーするのが確実
+- **入手元**: ユーザーの Google Drive フォルダに保管されている。新マシンにはユーザーが
+  共有するので、`~/suisho11/` に置いてから sha256 を確認する:
+
+```sh
+echo "a78b7f889843037d344f482623b3febd124ead5c1f34f134d9f1c2c78cd0f829  nn.bin" | (cd ~/suisho11 && sha256sum -c -)
+```
 
 ## 4. 対局用データ
 
@@ -149,7 +154,7 @@ cargo build --release -p bulletou_lib --features cuda-cpp-backend --example bull
 | experiment-007 の推奨 net | `~/2_fast_suisho/data/bulletou/checkpoints/007-wrm/0020/nn.bin` (sha256 `0c325ad2…`) | 学習トラックの現時点の最良 net。再学習は GPU で約 12 時間 |
 | experiment-006 の基準 net | `~/2_fast_suisho/data/bulletou/checkpoints/006-yane20/` | 比較の基準線 |
 | エンジンバイナリ | `~/engines/` | 各実験の再現用。新マシンでは再ビルドして sha256 を記録し直してもよい |
-| Suisho 11 | `~/suisho11/` | 入手元未記録 (上記 3) |
+| Suisho 11 | `~/suisho11/` | ユーザーの Google Drive から共有される (上記 3)。コピーは不要 |
 
 ## 8. 動作確認
 
