@@ -228,7 +228,7 @@ EOF 区切り) だったなら、16 epoch = **約 2350 億局面 ≒ 本環境 G
 ## 再現
 
 - リポジトリ commit: `7d25aaa` + 本実験フォルダ (experiments/005-bulletou-sojo/)
-- データ取得: `data/teacher/sojo/download.sh` / floodgate.hcpe は HF から直接
+- データ取得: 当時は `data/teacher/sojo/download.sh` (git 管理外) / floodgate.hcpe は HF から直接。現在は `scripts/fetch_teacher.sh` (両方を取得し sha256 検証可)
 - 学習: `bash experiments/005-bulletou-sojo/run_training.sh main 0` (GPU 必須。
   Claude Code sandbox は GPU 不可視のため sandbox off か実端末で — issue #13 参照)
 - 対局: `data/matchenv/bin/python experiments/005-bulletou-sojo/match_runner.py

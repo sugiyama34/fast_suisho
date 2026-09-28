@@ -7,7 +7,7 @@
   "bulletou_commit": "9577f08aeff1998756b6ad44fe686c4b9f84b3c3 (+ sm_120 build patch)",
   "terminology": {
     "BulletOu-epoch": "--superbatches N × 40M 局面の LR サイクル (005: N=12 → 4.8 億局面)",
-    "standard-epoch": "教師全体 1 周 = 奏乗 30 ファイル × 488,964,981 = 14,668,949,430 局面"
+    "standard-epoch": "教師全体 1 周 = 奏乗 30 ファイル = 14,668,949,437 局面 (029 のみ 488,964,988 局面、他 29 ファイルは 488,964,981)"
   },
   "yaneurao_disclosure_2026_07_28": "実設定は sb=108 × 16 epoch (691 億局面)。元の主張は本人訂正: accuracy は水匠11Plus 超えだが強さは R100 ほど低い。『sb 上げればもっと強くなるはず』",
   "phases": {
