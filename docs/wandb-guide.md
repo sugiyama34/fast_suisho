@@ -92,6 +92,8 @@ Admin キーはチーム内の全削除権限を持つため。
 
 ### 2.3 プロジェクト `.claude/settings.json` への差分
 
+> 2026-07-27 導入時の記録。現在の構成は 2.4 を参照。
+
 ```json
 // "env" ブロック (新規追加)
 "env": {
@@ -121,20 +123,16 @@ Admin キーはチーム内の全削除権限を持つため。
 "./.claude/hooks/wandb-guard.sh"
 ```
 
-### 2.4 `.claude/hooks/command-allowlist.sh` への差分
+### 2.4 ハーネス簡素化後の現状 (2026-09-28)
 
-```bash
-# GOVERNED_PREFIXES に追加
-"wandb"
+サーバー移行に合わせてハーネスを簡素化した。上記 2.3 の差分のうち現在も有効なのは
+`env` ブロックと `wandb-guard.sh` の PreToolUse 登録のみ:
 
-# ALLOWED_PATTERNS に追加
-# WandB: 同期・状態確認のみ許可 (bare / uv run 経由の両形。
-# login/sweep/削除系は wandb-guard.sh でもブロック)
-'^(uv run )?wandb sync( --sync-all| --clean| --id [a-zA-Z0-9]+)*( [A-Za-z0-9._/][A-Za-z0-9._/-]*)*$'
-'^(uv run )?wandb (status|--version)$'
-# 実験スクリプトの実行 (experiments/NNN-name/*.py)
-'^uv run python experiments/[0-9]{3}-[a-z0-9-]+/[A-Za-z0-9._-]+\.py( [A-Za-z0-9._/=,-]+)*$'
-```
+- `WANDB_PROJECT` は `suisho-test` から `fast-suisho` に変更
+- `permissions` ブロック (allow/deny) は削除。`wandb login` / `sweep` / `agent` /
+  `artifact delete` のブロックは `wandb-guard.sh` 単独で担う
+- sandbox は無効化 (`sandbox.enabled: false`)。`sandbox.filesystem` の設定は残っているが作動しない
+- `command-allowlist.sh` (旧 2.4 の差分先) は削除済み
 
 ## 3. 運用規約 (エージェント・人間共通)
 
