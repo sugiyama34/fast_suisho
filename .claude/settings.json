@@ -1,7 +1,7 @@
 {
   "env": {
     "WANDB_ENTITY": "suisho",
-    "WANDB_PROJECT": "fast-suisho",
+    "WANDB_PROJECT": "data_ablation_study",
     "WANDB_SILENT": "true"
   },
   "hooks": {
