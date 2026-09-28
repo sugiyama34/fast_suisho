@@ -20,7 +20,7 @@
 | experiment-005 (`005-bulletou-sojo`) | やねうらお氏共有レシピ (sb=12 × 16 epoch) の再現 | 水匠 11 比 −293 Elo。テンプレート値では学習量が桁違いに不足 | マージ済み (PR #14) |
 | experiment-006 (`006-standard-epoch`) | 学習量と LR 周期 (superbatches) のスケーリング | 氏の実設定 (sb=108 × 16) で −104 を再現。強さは教師 4〜5 周でピーク、以降は低下 | マージ済み (PR #15) |
 | experiment-007 (`007-wrm-factorizer`) | WRM loss / factorizer 無効化 / LR 単発アニール | FV_SCALE 補正後、WRM loss の効果は +54 Elo。最良 net は水匠 11 比 −40〜−60 | PR #19 (open) |
-| experiment-009 (`009-data-scaling`) | 教師データ量のアブレーション (100〜10%, 定跡除外は experiment-010) | 未着手。kajiki は GPU 律速で遅く、新サーバーで学習する | 準備 PR |
+| experiment-009 (`009-data-scaling`) | 教師データ量のアブレーション (100〜10%, 定跡除外は experiment-010) | 未着手。kajiki は GPU 律速で遅く、新サーバーで学習する | PR #23 (open) |
 
 詳細は各実験フォルダの `report.md` を読むこと。
 
@@ -42,8 +42,9 @@
 5. **学習速度は実時間で測る** (experiment-009 準備で確認)。BulletOu 進捗行の `pos/s` は
    GPU へのカーネル投入時間だけを数えることがあり、実時間の 6 倍の値が出た例がある
    (`docs/SETUP.md` §8)
-6. **experiment-009 以降は PR #19 (experiment-007) の知見に依存しない** (2026-09-28 ユーザー決定)。
-   レシピは experiment-006 のもの (sigmoid-MSE) を使い、対局は固定ノード数で行う
+6. **experiment-009 (データアブレーション系列) は PR #19 (experiment-007) の知見に依存しない**
+   (2026-09-28 ユーザー決定)。レシピは experiment-006 のもの (sigmoid-MSE) を使い、
+   対局は固定ノード数で行う
 7. 対局条件は `docs/PLAN.md` フェーズ 3 のもの (movetime 240ms, 16 スレッド, hash 1024MB,
    互角局面集のストライド 500 局面)。新サーバーでは**ノード数の再校正が必要**
    (`match/calibrate_nodes.sh`)。CPU が変わると同じ movetime でもノード数が変わる

@@ -12,8 +12,13 @@
 #   epochs: 全 arm で同じ値を使うこと (既定は EPOCHS_DEFAULT)。--max-epochs は resume
 #     シグネチャに含まれないので、途中で止めた run を後から大きい値で再開して延長できる
 #
-#   SMOKE=1 を付けると sb=2 × epochs で動作確認だけ行う (出力は 009-<arm>-smoke/)。
+#   SMOKE=1: sb=2 × epochs で動作確認だけ行う (出力は 009-<arm>-smoke/)。
 #     例: SMOKE=1 bash experiments/009-data-scaling/run_training.sh p10 0 1
+#   BENCH=1: スループット計測。sb=16 × 1 epoch、保存は末尾 1 回 (出力は 009-<arm>-bench/)。
+#     1 sb の実時間はログの [progress] 行の時刻差から出す (docs/SETUP.md §8)
+#   OUT_TAG=<tag>: 出力ディレクトリとログ名に付ける接尾辞。同じ arm を同時に複数走らせる
+#     計測で、出力とログが衝突しないようにする (例: OUT_TAG=g0, OUT_TAG=g1)
+#   SMOKE / BENCH の出力ディレクトリは毎回消してから始める (本番の 009-<arm>/ には触れない)
 #
 # checkpoint は各 epoch 末 (LR 最小点) に data/bulletou/checkpoints/009-<arm>/NNNN/ に出る
 # (--save-rate 9999 + 既定の save-epoch-end → NNNN = epoch 番号)。
@@ -26,6 +31,8 @@ EPOCHS="${3:-$EPOCHS_DEFAULT}"
 SB=108
 OUT="009-$ARM"
 if [ "${SMOKE:-0}" = 1 ]; then SB=2; OUT="009-$ARM-smoke"; fi
+if [ "${BENCH:-0}" = 1 ]; then SB=16; EPOCHS=1; OUT="009-$ARM-bench"; fi
+OUT="$OUT${OUT_TAG:+-$OUT_TAG}"
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 HERE="$REPO/experiments/009-data-scaling"
 BIN="$REPO/data/bulletou/BulletOu/target/release/examples/bulletou"
@@ -46,6 +53,10 @@ for f in "${FILES[@]}"; do
   have=$(stat -L -c%s "$f" 2>/dev/null || echo 0)
   [ "$have" -eq "$expected" ] || { echo "error: $f size=$have expected=$expected" >&2; exit 1; }
 done
+
+if [ "${SMOKE:-0}" = 1 ] || [ "${BENCH:-0}" = 1 ]; then
+  rm -rf "$REPO/data/bulletou/checkpoints/$OUT"
+fi
 
 export CUDA_VISIBLE_DEVICES="$GPU"
 export LD_LIBRARY_PATH="/usr/local/cuda/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
@@ -71,5 +82,6 @@ echo "[launch] arm=$ARM files=${#FILES[@]} sb=$SB epochs=$EPOCHS gpu=$GPU out=$O
   --validation-rate 4 \
   --threads 8 \
   --output "$REPO/data/bulletou/checkpoints/$OUT" \
-  "${@:4}" 2>&1 | tee -a "$LOG_DIR/$ARM.log"
+  "${@:4}" 2>&1 | while IFS= read -r line; do printf '%(%F %T)T %s\n' -1 "$line"; done \
+  | tee -a "$LOG_DIR/$OUT.log"
 echo "[exit] arm=$ARM $(date)"

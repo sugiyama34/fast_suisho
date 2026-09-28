@@ -177,7 +177,9 @@ git apply ../../../experiments/005-bulletou-sojo/bulletou-sm120.patch
   埋め込まれ、compute_120 の PTX は古い GPU で JIT できない)
 - **GPU が Blackwell 以外なら `experiments/009-data-scaling/bulletou-multiarch.patch` を使う**
   (sm120 パッチの代わりに当てる。sm_80 / sm_90 / sm_120 の SASS + compute_80 PTX)。
-  kajiki で CUDA 13.1 によるビルドと `cuobjdump` での埋め込み確認まで済み (A100 実機は未確認):
+  kajiki で CUDA 13.1 によるビルドと `cuobjdump` での埋め込み確認まで済み (A100 実機は未確認)。
+  sm_120 は nvcc 12.8 以上、sm_90 は 11.8 以上が必要。`nvcc --version` がそれより古ければ、
+  パッチを当てた後に `crates/cuda_cpp/build.rs` から該当する `-gencode` 行を消す:
 
 ```sh
 git apply ../../../experiments/009-data-scaling/bulletou-multiarch.patch   # sm120 パッチの代わり
@@ -227,14 +229,22 @@ cargo build --release -p bulletou_lib --features cuda-cpp-backend --example bull
    (`experiments/005-bulletou-sojo/run_training.sh smoke`) が数分で完走する
 4. 新サーバーの基準 NPS を取り直す。**旧開発機の NPS と直接比較しない**
    (CPU が違えば NPS の絶対値は変わる。比較は常に同一マシン上の A/B で行う)
-5. **学習スループットを実時間で測る** (学習計画の前提になる)。短い学習を走らせ、
-   進捗行 `[progress] ... sb k/N` が出る**間隔 (実時間)** から 1 sb (約 4000 万局面) の秒数を出す。
-   進捗行の `pos/s` は GPU へのカーネル投入時間しか数えないことがあり、kajiki では実時間の
-   6 倍の値が出た。1 run 単独と、実際に並べる本数で同時に走らせた場合の両方を測る:
+5. **学習スループットを実時間で測る** (学習計画の前提になる)。`BENCH=1` で sb=16 × 1 epoch を
+   走らせ、ログの進捗行 `[progress] ... sb k/16` の**時刻差**から 1 sb (約 4000 万局面) の秒数を出す
+   (最初の 1 本は起動時間を含むので捨てる)。進捗行の `pos/s` は GPU へのカーネル投入時間しか
+   数えないことがあり、kajiki では実時間の 6 倍の値が出た。1 run 単独と、実際に並べる本数で
+   同時に走らせた場合の両方を測る。同時計測では `OUT_TAG` で出力とログを分ける:
 
 ```sh
-# 例: p10 の 3 ファイルで sb=2 × 1 epoch (出力は checkpoints/009-p10-smoke/)
-SMOKE=1 bash experiments/009-data-scaling/run_training.sh p10 0 1
+# 1 run 単独 (p10 の 3 ファイル。ログは experiments/009-data-scaling/logs/009-p10-bench.log)
+BENCH=1 bash experiments/009-data-scaling/run_training.sh p10 0
+# 2 run 同時 (GPU 0 と 1)
+BENCH=1 OUT_TAG=g0 bash experiments/009-data-scaling/run_training.sh p10 0 &
+BENCH=1 OUT_TAG=g1 bash experiments/009-data-scaling/run_training.sh p10 1 &
+wait
+# 1 sb あたりの秒数 (行頭の時刻から)
+grep -a 'progress\]' experiments/009-data-scaling/logs/009-p10-bench-g0.log \
+  | awk '{split($2,t,":"); s=t[1]*3600+t[2]*60+t[3]; if (p) print s-p; p=s}'
 ```
 
 ## 9. サーバーのスペック

@@ -70,8 +70,11 @@ def main() -> None:
     files = ARMS[args.arm]
     teacher_pos = len(files) * POS_PER_FILE
     total_pos = args.epochs * SB * POS_PER_SB
-    log_path = REPO / "data" / "bulletou" / "checkpoints" / f"009-{args.arm}" / "summary-learn.log"
-    start_rows = len(read_rows(log_path)) if log_path.exists() else 0
+    # --smoke は W&B を無効にし、トレーナも SMOKE=1 (sb=2, 出力 009-<arm>-smoke/) で動かす
+    out_name = f"009-{args.arm}-smoke" if args.smoke else f"009-{args.arm}"
+    log_path = REPO / "data" / "bulletou" / "checkpoints" / out_name / "summary-learn.log"
+    # smoke は出力を消してから始まるので既存行を数えない
+    start_rows = len(read_rows(log_path)) if log_path.exists() and not args.smoke else 0
 
     cmd = ["bash", str(HERE / "run_training.sh"), args.arm, args.gpu, str(args.epochs)]
     config = {
@@ -92,7 +95,8 @@ def main() -> None:
         EXPERIMENT, config=config, tags=[args.arm, "supervised"], smoke=args.smoke
     ) as run:
         print(f"wandb run: {getattr(run.run, 'url', None) or run.run.name}", flush=True)
-        proc = subprocess.Popen(cmd, start_new_session=True)
+        env = {**os.environ, "SMOKE": "1"} if args.smoke else None
+        proc = subprocess.Popen(cmd, start_new_session=True, env=env)
         cancelled = False
 
         def forward_signal(_signum, _frame) -> None:
