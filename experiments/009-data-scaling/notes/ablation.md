@@ -1,0 +1,32 @@
+# アブレーション (FT の `w_specific` を未学習に戻す)
+
+## ツール (`ablate/`, 2026-09-29)
+
+Python + numpy (`data/matchenv/bin/python` で実行)。
+
+- `ablate.py --ckpt <checkpoint> --mode {none|zero-specific|random-specific} --features <list> --out <dir>/nn.bin [--verify]`
+  - `state.bin` (畳み込み前の重み) を読み、対象特徴量の `w_specific` 行を書き換え、
+    `w_specific + w_factor` に畳み込み、BulletOu と同じ量子化 (×127, 0.5 は 0 から遠い側へ丸め, i16 クリップ) と
+    LEB128 符号化で nn.bin を書く。ヘッダと layer stack ×9 は元の nn.bin からそのままコピー
+  - `zero-specific`: `w_specific` = 0 (`w_factor` は残す) = 厳密に「未学習」
+  - `random-specific`: 各要素を N(0, σ²) で置き換える (PCG64, `--seed`)。σ = 学習後の `w_specific` の
+    RMS。基準にする行は「構造的に現れ得て、かつアブレーション対象でない特徴量」(現れ得ない行はほぼ 0 のままで
+    σ を小さく引っ張るため除く)。既定は全 1024 列で共通の σ (`--sigma-scope per-column` で列ごと)
+  - 1 回の書き出し 8〜9 秒 (`--verify` 付きで約 20 秒)、RAM 約 7 GB、ほぼ 1 スレッド
+- `select_features.py (--arm p10 | --ckpt <dir> | --counts ...) --percent X --by {features|occurrences} --out rare.npy`
+  - 候補は構造的に現れ得る特徴量 123,053 個だけ
+  - `--by features`: 出現回数の少ない順に X% の個数を取る。`--by occurrences`: 発火回数の合計が全体の X% に
+    収まる範囲で少ない順に取る (x 軸の 2 種類に対応)
+  - 同数のタイはシード付きの乱数順で切る (index 順だと玉位置の小さいマスに偏るため)。境界の出現回数や
+    タイの分割は sidecar JSON に記録する。`--report-counts` で対局側の発火に占める割合も出せる
+
+## 検証 (2026-09-29)
+
+1. `none` モードで既存 checkpoint の nn.bin を**バイト単位で再現** (smoke / bench の 4 checkpoint。
+   `state.bin` と `weights.bin` の両方)。小さいネットでは 2 バイト符号・クリップ・0.5 の丸めが出ないため、
+   それらは合成データの単体テスト (`test_nnbin.py`, i16 全 65,536 値など) で確認した
+2. `zero-specific` (p10 の教師出現回数で下位 5% = 6,153 特徴量): 変わったのは対象の 6,153 行だけで、
+   値は `round(w_factor × 127)` に一致
+3. やねうら王で読み込んで `readyok`、`go nodes 10000` が動く。下位 5% のアブレーションでは初期局面の
+   指し手・評価値は変わらない (序盤に稀な特徴量は現れない)。全特徴量をアブレーションすると指し手が変わるので、
+   書き換えた重みが実際に使われていることも確認した
