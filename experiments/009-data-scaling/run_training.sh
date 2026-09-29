@@ -59,7 +59,9 @@ if [ "${SMOKE:-0}" = 1 ] || [ "${BENCH:-0}" = 1 ]; then
 fi
 
 export CUDA_VISIBLE_DEVICES="$GPU"
-export LD_LIBRARY_PATH="/usr/local/cuda/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+# CUDA_HOME: CUDA toolkit の場所 (libcudart.so.12)。既定は /usr/local/cuda。
+# /usr/local/cuda が無いサーバー (例: suzuki) では CUDA_HOME を設定する (docs/SETUP.md §6)
+export LD_LIBRARY_PATH="${CUDA_HOME:-/usr/local/cuda}/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 echo "[launch] arm=$ARM files=${#FILES[@]} sb=$SB epochs=$EPOCHS gpu=$GPU out=$OUT $(date)"
 "$BIN" \

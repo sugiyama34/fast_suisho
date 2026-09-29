@@ -40,7 +40,7 @@ SB = 108
 POS_PER_SB = 39_976_960  # 40M を batch 65536 の倍数に切り下げた実効値
 
 CONFIG = {
-    "trainer": "BulletOu 2a8e5ed (cuda-cpp, sm_120 patch)",
+    "trainer": "BulletOu 2a8e5ed (cuda-cpp, multiarch patch)",
     "arch": "SFNN_halfka2_1024_7_64_k3k3",
     "loss": "sigmoid-MSE (WRM なし, lambda 1.0, scale 290)",
     "test_teacher": "takaoyamaoka/floodgate.hcpe (300k/validation, rate 4sb, test-seed 20260928)",

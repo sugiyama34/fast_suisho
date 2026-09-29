@@ -195,7 +195,10 @@ cargo build --release -p bulletou_lib --features cuda-cpp-backend --example bull
 
 - 生成物: `data/bulletou/BulletOu/target/release/examples/bulletou`
 - 学習の起動には `LD_LIBRARY_PATH=/usr/local/cuda/lib64` が必要
-  (各実験の `run_training.sh` が設定する)
+  (各実験の `run_training.sh` が設定する)。toolkit が `/usr/local/cuda` 以外にある場合は、
+  上のビルドでは `/usr/local/cuda` をその場所に読み替え、学習時は `CUDA_HOME` を export する
+  (experiment-009 の `run_training.sh` は `${CUDA_HOME:-/usr/local/cuda}/lib64` を使う)。
+  suzuki: `/mnt/nvme1/sugiyama/cuda-12.8` (CUDA 12.8, sudo なしでユーザー領域に導入)
 - checkpoint は `data/bulletou/checkpoints/<実験>-<arm>/NNNN/nn.bin` に出る。
   旧開発機では全 checkpoint で約 500 GB あった。ディスクは教師データと合わせて
   **最低 1.2 TB 程度**を見込む
