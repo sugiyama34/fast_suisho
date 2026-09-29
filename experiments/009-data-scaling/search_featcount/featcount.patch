@@ -1,0 +1,190 @@
+--- a/source/eval/nnue/evaluate_nnue.cpp
++++ b/source/eval/nnue/evaluate_nnue.cpp
+@@ -26,6 +26,109 @@
+ namespace YaneuraOu::Eval::NNUE {
+ extern int FV_SCALE;
+ }
++
++#if defined(FEATCOUNT)
++// ============================================================
++//  experiment-009 計測: 探索中の NNUE 評価ごとの HalfKA2 特徴量の発火回数
++//  (fast_suisho experiments/009-data-scaling)
++//  ComputeScore() がネットワークを実際に計算するとき (accumulator.computed_score の
++//  キャッシュに当たらなかったとき) だけ、局面から両視点の active index を計算し直して数える。
++//  ヒストグラムはスレッドごと (thread_local) に持ち、dump 時に合算する。
++// ============================================================
++#include <atomic>
++#include <cstdio>
++#include <mutex>
++namespace YaneuraOu::Eval::FeatCount {
++using namespace YaneuraOu::Eval::NNUE;
++static_assert(RawFeatures::kDimensions == 131949, "FEATCOUNT expects HalfKA2 (131949)");
++static_assert(RawFeatures::kRefreshTriggers.size() == 1, "FEATCOUNT expects a single trigger");
++constexpr size_t kDim = RawFeatures::kDimensions;
++struct Hist {
++    std::vector<u64> both = std::vector<u64>(kDim, 0);
++    u64 evals = 0;       // 探索中の evaluate() でネットワークを計算した回数 (= ヒストグラムに入れた回数)
++    u64 set_evals = 0;   // Position::set() からの全計算 (compute_eval, refresh=true)。ヒストグラムには入れない
++    u64 bad_count = 0;   // 1 視点の active index が 40 個でなかった回数 (0 のはず)
++};
++static std::mutex g_mutex;
++static std::vector<Hist*> g_hists;
++static thread_local Hist* t_hist = nullptr;
++static Hist& hist() {
++    if (!t_hist) {
++        t_hist = new Hist();  // スレッド終了後も dump で読めるよう解放しない
++        std::lock_guard<std::mutex> lk(g_mutex);
++        g_hists.push_back(t_hist);
++    }
++    return *t_hist;
++}
++inline void record(const Position& pos) {
++    Hist& h = hist();
++    Features::IndexList active[2];
++    RawFeatures::AppendActiveIndices(pos, RawFeatures::kRefreshTriggers[0], active);
++    for (Color c : {BLACK, WHITE}) {
++        if (active[c].size() != 40) ++h.bad_count;
++        for (const auto idx : active[c]) ++h.both[idx];
++    }
++    ++h.evals;
++}
++inline void record_set() { ++hist().set_evals; }
++// 検証用 (USI featsfen): 局面を 1 回分 record() し、両視点の index を文字列で返す
++std::string record_and_list(const Position& pos) {
++    record(pos);
++    Features::IndexList active[2];
++    RawFeatures::AppendActiveIndices(pos, RawFeatures::kRefreshTriggers[0], active);
++    std::string r;
++    for (Color c : {BLACK, WHITE}) {
++        r += (c == BLACK) ? "black" : " white";
++        for (const auto idx : active[c]) r += " " + std::to_string(idx);
++    }
++    return r;
++}
++struct Totals { u64 evals = 0, set_evals = 0, bad_count = 0, sum = 0; };
++Totals totals(std::vector<u64>* out) {
++    std::lock_guard<std::mutex> lk(g_mutex);
++    Totals t;
++    if (out) out->assign(kDim, 0);
++    for (Hist* h : g_hists) {
++        t.evals += h->evals; t.set_evals += h->set_evals; t.bad_count += h->bad_count;
++        for (size_t i = 0; i < kDim; ++i) {
++            t.sum += h->both[i];
++            if (out) (*out)[i] += h->both[i];
++        }
++    }
++    return t;
++}
++std::string dump(const std::string& path) {
++    std::vector<u64> sum;
++    Totals t = totals(&sum);
++    std::string hdr = "{'descr': '<u8', 'fortran_order': False, 'shape': (" + std::to_string(kDim) + ",), }";
++    while ((10 + hdr.size() + 1) % 64) hdr += ' ';
++    hdr += '\n';
++    std::FILE* f = std::fopen(path.c_str(), "wb");
++    if (!f) return "featdump error: cannot open " + path;
++    const unsigned char magic[8] = {0x93, 'N', 'U', 'M', 'P', 'Y', 1, 0};
++    const unsigned short hl = (unsigned short)hdr.size();
++    std::fwrite(magic, 1, 8, f);
++    std::fwrite(&hl, 2, 1, f);  // little endian (x86)
++    std::fwrite(hdr.data(), 1, hdr.size(), f);
++    std::fwrite(sum.data(), sizeof(u64), kDim, f);
++    std::fclose(f);
++    return "featdump path " + path + " evals " + std::to_string(t.evals) + " set_evals " +
++           std::to_string(t.set_evals) + " sum " + std::to_string(t.sum) + " bad " + std::to_string(t.bad_count);
++}
++std::string stat() {
++    Totals t = totals(nullptr);
++    return "featstat evals " + std::to_string(t.evals) + " set_evals " + std::to_string(t.set_evals) +
++           " sum " + std::to_string(t.sum) + " bad " + std::to_string(t.bad_count);
++}
++void reset() {
++    std::lock_guard<std::mutex> lk(g_mutex);
++    for (Hist* h : g_hists) {
++        std::fill(h->both.begin(), h->both.end(), 0);
++        h->evals = h->set_evals = h->bad_count = 0;
++    }
++}
++}  // namespace YaneuraOu::Eval::FeatCount
++#endif  // FEATCOUNT
+  
+ // ============================================================
+ //              旧評価関数のためのヘルパー
+@@ -308,6 +411,12 @@
+             return accumulator.score;
+         }
+ 
++#if defined(FEATCOUNT)
++        // ここに来た = この局面のネットワーク出力を実際に計算する (computed_score キャッシュ外れ)。
++        // refresh=true は Position::set() からの compute_eval() (探索外) なので別に数える。
++        if (refresh) FeatCount::record_set();
++        else         FeatCount::record(pos);
++#endif
+         alignas(kCacheLineSize) TransformedFeatureType
+             transformed_features[FeatureTransformer::kBufferSize];
+         networks().feature_transformer.Transform(pos, transformed_features, refresh);
+--- a/source/usi.cpp
++++ b/source/usi.cpp
+@@ -13,6 +13,16 @@
+ #include "engine.h"
+ #include "movegen.h"
+ 
++#if defined(FEATCOUNT)
++// experiment-009 計測 (eval/nnue/evaluate_nnue.cpp)
++namespace YaneuraOu::Eval::FeatCount {
++std::string dump(const std::string& path);
++std::string stat();
++void reset();
++std::string record_and_list(const Position& pos);
++}
++#endif
++
+ #if defined(__EMSCRIPTEN__)
+ // yaneuraou.wasm
+ #include <emscripten.h>
+@@ -156,6 +166,11 @@
+ 
+ 	// エンジンの終了を待つ。
+ 	engine.wait_for_search_finished();
++#if defined(FEATCOUNT)
++	// 環境変数 FEATCOUNT_OUT があれば quit 時にそこへ dump する
++	if (const char* out = std::getenv("FEATCOUNT_OUT"))
++		std::cerr << Eval::FeatCount::dump(out) << std::endl;
++#endif
+ 
+ #else
+ 	// yaneuraOu.wasm
+@@ -437,6 +452,33 @@
+         Test::test_cmd(engine, is);
+ #endif
+ 
++#if defined(FEATCOUNT)
++    // featdump <path> : 発火回数 (両視点合計, u64[131949]) を .npy に書く
++    // featreset       : 0 に戻す
++    // featstat        : 評価回数などを表示
++    // featsfen <sfen> : (検証用) その局面を 1 評価分として数え、両視点の index を表示する
++    else if (token == "featsfen")
++    {
++        std::string sfen, t;
++        while (is >> t) sfen += t + " ";
++        StateInfo si;
++        Position p;
++        p.set(sfen, &si);
++        sync_cout << "info string featsfen " << Eval::FeatCount::record_and_list(p) << sync_endl;
++    }
++    else if (token == "featdump" || token == "featreset" || token == "featstat")
++    {
++        engine.wait_for_search_finished();
++        if (token == "featdump") {
++            std::string path; is >> path;
++            sync_cout << "info string " << Eval::FeatCount::dump(path) << sync_endl;
++        } else if (token == "featreset") {
++            Eval::FeatCount::reset();
++            sync_cout << "info string featreset done" << sync_endl;
++        } else
++            sync_cout << "info string " << Eval::FeatCount::stat() << sync_endl;
++    }
++#endif
+     // ユーザーによる実験用コマンド。Engine::user_cmd()が呼び出される。
+     else if (token == "user")
+         engine.user(is);
