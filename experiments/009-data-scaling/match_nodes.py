@@ -103,6 +103,11 @@ def main() -> None:
                 continue
             done.setdefault(rec["pair"], []).append(rec)
         done = {p: r[:2] for p, r in done.items() if len(r) >= 2}
+        # 局面はストライド (= --pairs 依存) で選ぶので、--pairs を変えて再開すると
+        # 同じ pair 番号が別局面を指す。混ざらないよう停止する
+        bad = [p for p, r in done.items() if p >= len(positions) or r[0]["sfen"] != positions[p]]
+        if bad:
+            raise SystemExit(f"{games_path}: pairs {bad[:5]} do not match --pairs {args.pairs}")
         tmp = games_path.with_suffix(".jsonl.tmp")
         with tmp.open("w") as fh:
             for p in sorted(done):
@@ -156,8 +161,16 @@ def main() -> None:
                     try:
                         recs = []
                         for cand_is_black in (True, False):
+                            moves: list[str] = []
+                            t0 = time.time()
                             score, reason, plies = play_game(
-                                cand, base, positions[i], cand_is_black, args.nodes, args.max_plies
+                                cand,
+                                base,
+                                positions[i],
+                                cand_is_black,
+                                args.nodes,
+                                args.max_plies,
+                                moves_out=moves,
                             )
                             recs.append(
                                 {
@@ -167,6 +180,8 @@ def main() -> None:
                                     "reason": reason,
                                     "plies": plies,
                                     "sfen": positions[i],
+                                    "moves": " ".join(moves),
+                                    "sec": round(time.time() - t0, 2),
                                     "time": time.strftime("%Y-%m-%dT%H:%M:%S"),
                                 }
                             )
