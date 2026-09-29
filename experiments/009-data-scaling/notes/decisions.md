@@ -47,6 +47,11 @@
   `Driver/library version mismatch` で GPU が使えない。**再起動 (root 権限) が必要**
 - **電力の制約**: GPU 5 枚 + CPU 全コアを同時に使わない (ユーザー)
 - **優先順位の変更 (ユーザー)**: まず full を学習し、full のアブレーションの Elo を測る。データ削減 arm の学習はその後
+- 対応 (09-30 08:10): 落ちた run の残骸は `009-<arm>.dead-20260929` に退避。GPU が使えるようになった時点で full を
+  GPU 0 で自動的に始める監視スクリプト (`/mnt/nvme1/sugiyama/gpu_watch_start_full.sh`) を起動 (再起動すると消える)。
+  対局キューは W=24 で再起動 (電力のため)。full-e12 を基準にした暫定アブレーション (zero-specific,
+  教師順位・対局順位 × 下位 5/10/20/30%, 各 400 ペア) を優先度 25 でキューに追加。対局側カウントの確定版は
+  `/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy` (集計完了時に自動でコピー)
 
 ## loss の測り方 (2026-09-29)
 
