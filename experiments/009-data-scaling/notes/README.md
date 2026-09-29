@@ -10,3 +10,4 @@
 | [feature-counts.md](feature-counts.md) | 特徴量 (one-hot) の出現回数の統計: 教師データ側・対局側、分布間の距離 (TV / JS) |
 | [ablation.md](ablation.md) | アブレーション用ツール (`ablate/`) の仕様と検証、アブレーションの結果 |
 | [server-suzuki.md](server-suzuki.md) | 新サーバー suzuki の環境構築と計測値 (学習スループット・対局速度) |
+| [ratings.md](ratings.md) | 対局結果の一覧 (`match_queue.py` が自動で追記) と対局キューの使い方 |

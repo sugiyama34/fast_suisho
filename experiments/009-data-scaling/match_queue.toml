@@ -1,0 +1,77 @@
+# experiment-009 の対局キュー (match_queue.py が 1 分ごとに読み直す。実行中に追記してよい)
+#
+# ジョブの書き方:
+#   [[job]]
+#   name     = "full-e8-vs-s11-300k"   # 一意。games/<name>/ に棋譜、ratings.md の「対局名」
+#   a        = "009-full/0008"          # Elo はこちらから見た値
+#   b        = "suisho11"
+#   nodes    = 300000
+#   pairs    = 1000                     # 開始局面は pairs ごとの等間隔ストライド (同じ pairs なら同じ局面集合)
+#   priority = 30                       # 小さいほど先。同じならファイル順。省略時 100
+#   workers  = 40                       # 省略時はキューの --workers (既定 40)
+#   note     = "..."                    # ratings.md の備考に入る (省略可)
+#
+# ネットの指定 (a / b):
+#   "suisho11"        : ~/suisho11
+#   "009-p50/0012"    : data/bulletou/checkpoints/ からの相対パス (絶対パスも可)。無ければ出来るまで待つ
+#   { ablate = "名前", ckpt = "009-full/0002", select = "select_features.py の引数", mode = "zero-specific" }
+#       : /mnt/nvme1/sugiyama/ablated/<名前>/nn.bin を必要になった時点で作る (作成済みなら再利用)。
+#         select の中の {ckpt} は checkpoint のパスに置き換わる。任意: verify = true (ablate.py --verify),
+#         extra = "--seed 1" (ablate.py への追加引数), label = "表記名",
+#         requires = ["/path/to/file"] (このファイルが存在するまで待つ。対局側カウントの完成待ちなど)
+#
+# 実行済み: games/<name>/queue_done.json。失敗: games/<name>/queue_failed.json (消せば再試行)。
+# 実行済みのジョブを消す必要はない (履歴として残す)。
+
+# 1. パイプライン確認: 学習 1 epoch 目 vs 水匠 11
+[[job]]
+name = "check-full-e1-vs-s11-300k"
+a = "009-full/0001"
+b = "suisho11"
+nodes = 300000
+pairs = 100
+priority = 10
+note = "パイプライン確認"
+
+# 2. パイプライン確認: 実サイズのネットでのアブレーション (教師出現回数の下位 5%, zero-specific)
+[[job]]
+name = "check-full-e2-zs-teach-f5-vs-full-e2-300k"
+a = { ablate = "full-e2-zs-teach-f5", ckpt = "009-full/0002", select = "--arm full --percent 5 --by features", mode = "zero-specific", verify = true }
+b = "009-full/0002"
+nodes = 300000
+pairs = 100
+priority = 20
+note = "パイプライン確認"
+
+# 3. full の途中 epoch vs 水匠 11
+[[job]]
+name = "full-e8-vs-s11-300k"
+a = "009-full/0008"
+b = "suisho11"
+nodes = 300000
+pairs = 1000
+priority = 30
+
+[[job]]
+name = "full-e12-vs-s11-300k"
+a = "009-full/0012"
+b = "suisho11"
+nodes = 300000
+pairs = 1000
+priority = 30
+
+[[job]]
+name = "full-e16-vs-s11-300k"
+a = "009-full/0016"
+b = "suisho11"
+nodes = 300000
+pairs = 1000
+priority = 30
+
+[[job]]
+name = "full-e20-vs-s11-300k"
+a = "009-full/0020"
+b = "suisho11"
+nodes = 300000
+pairs = 1000
+priority = 30
