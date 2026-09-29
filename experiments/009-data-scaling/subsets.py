@@ -7,7 +7,7 @@
 
 Stage 1 (粗いカーブ) はネスト構造: NESTED_ORDER の先頭 k 個のサブスタックを使う。
     p10 ⊂ p30 ⊂ p50 ⊂ full
-Stage 2 (曲がり角の精査) は「連続する k 個のサブスタックを落とす」パターンを 3 通りずつ。
+p60〜p90 も同じくネスト (NESTED_ORDER の先頭 6〜9 個)。旧案の「連続する k 個を落とす 3 パターン」は廃止。
 
 学習時のファイル順は常にファイル番号の昇順 (full-rot のみ 016 始まりの回転)。
 
@@ -39,12 +39,6 @@ def files_of(stacks: list[int]) -> list[int]:
     return sorted(n for d in stacks for n in substack(d))
 
 
-def drop_consecutive(start: int, k: int) -> list[int]:
-    """サブスタック start, start+1, ..., start+k-1 (mod 10) を落とした残り。"""
-    dropped = {(start + i) % 10 for i in range(k)}
-    return [d for d in range(10) if d not in dropped]
-
-
 ARMS: dict[str, list[int]] = {
     # Stage 1
     "full": files_of(list(range(10))),
@@ -53,10 +47,10 @@ ARMS: dict[str, list[int]] = {
     "p30": files_of(NESTED_ORDER[:3]),
     "p10": files_of(NESTED_ORDER[:1]),
 }
-# Stage 2: 90% / 80% / 70% を 3 パターンずつ (落とす先頭サブスタック 0, 3, 6)
-for k, frac in [(1, 90), (2, 80), (3, 70)]:
-    for start in (0, 3, 6):
-        ARMS[f"p{frac}-d{start}"] = files_of(drop_consecutive(start, k))
+# p60〜p90 もネスト (2026-09-29 決定): p50 ⊂ p60 ⊂ p70 ⊂ p80 ⊂ p90 ⊂ full。
+# S0 (010/020/030) は full 以外の全 arm で held-out になる
+for k in (6, 7, 8, 9):
+    ARMS[f"p{k * 10}"] = files_of(NESTED_ORDER[:k])
 
 
 def teacher_arg(arm: str) -> str:
