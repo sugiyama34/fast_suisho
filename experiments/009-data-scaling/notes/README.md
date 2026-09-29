@@ -11,3 +11,4 @@
 | [ablation.md](ablation.md) | アブレーション用ツール (`ablate/`) の仕様と検証、アブレーションの結果 |
 | [server-suzuki.md](server-suzuki.md) | 新サーバー suzuki の環境構築と計測値 (学習スループット・対局速度) |
 | [ratings.md](ratings.md) | 対局結果の一覧 (`match_queue.py` が自動で追記) と対局キューの使い方 |
+| [loss-eval.md](loss-eval.md) | loss の測定ツール (`loss_eval/`): nn.bin の CPU 順伝播 (やねうら王と同一), 固定標本 A〜D, 稀さでの層別, 検証 |
