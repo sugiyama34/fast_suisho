@@ -11,10 +11,12 @@
            水匠 11@32 と対局, 親の FV_SCALE。親も同じ 1,000 ペアで対局) と、full 最良の 1M ノード確認、full-e10 の FV_SCALE 格子を追加
   final  : 上の対局が終わるのを待つ (GPU を使わない時間なので W=56)。loss_eval も流す
   armsA  : データ削減 arm p50/p10/p90/p70/p80 を GPU 0〜4 で E=10 (CPU は軽く: 対局しない)
-  armsB  : p60 を GPU 0 で E=10。並行して armsA の arm の対局 (W=28)。p60 が終われば残りは W=56
+  armsB  : p60 / p30 / full-rot (複製 = ノイズ床) を GPU 0〜2 で E=10。並行して armsA の arm の対局 (W=22)。
+           終われば残りは W=56
   rate   : 全 arm の対局を待つ → loss_eval → done
-arm の対局: e10 の FV_SCALE 格子 (full 最良値 ± 8, vs 水匠 11@32, 400 ペア)、周回数を full-e10 に揃えた epoch
-(vs 水匠 11, 400 ペア)、e10 の本命対局 (vs 水匠 11, 1,000 ペア。full-e10 も同じ 1,000 ペア)。
+arm の対局: 候補 epoch を 300 ペアずつ水匠 11 と対局して最良 epoch を決め、その epoch を 2,000 ペア
+(基準 full と同じ開始局面, full の FV_SCALE)。基準は常に full (最良 epoch): arm (最良 epoch) − full と ablated − full を比べて
+「X% アブレーション ≈ Y% データ削減」を読む (2026-09-30 ユーザー決定)。
 
 電力 (ユーザー決定): GPU と CPU の併用は GPU 3 枚 + CPU 32 コアまで。CPU が軽ければ GPU 5 枚、GPU を使わなければ CPU 全部。
 
@@ -54,8 +56,21 @@ BRANCH = "exp/009-data-scaling"
 FULL_EPOCHS = 20
 ARM_EPOCHS = 10
 ARMS_A = {"p50": "0", "p10": "1", "p90": "2", "p70": "3", "p80": "4"}  # arm -> GPU
-ARMS_B = {"p60": "0"}
-FRACTION = {"p90": 0.9, "p80": 0.8, "p70": 0.7, "p60": 0.6, "p50": 0.5, "p10": 0.1}
+# 2 波目は GPU 3 枚 (電力の予算: GPU 3 枚 + CPU 32 コア)。p30 は 50%→90% 削減の間を埋める。
+# full-rot は full と同じデータを 016 始まりの順で学習した複製 = 学習の揺らぎ (ノイズ床) の見積もり
+ARMS_B = {"p60": "0", "p30": "1", "full-rot": "2"}
+FRACTION = {
+    "p90": 0.9,
+    "p80": 0.8,
+    "p70": 0.7,
+    "p60": 0.6,
+    "p50": 0.5,
+    "p30": 0.3,
+    "p10": 0.1,
+    "full-rot": 1.0,
+}
+ARM_PAIRS = 2000  # arm-e10 と full-e10 の本命対局 (データ側は棋譜が全部変わるので対局数を増やす)
+W_ARMS_B = 22  # 2 波目 (GPU 3 枚, 学習プロセスが計約 9 コア) と並行する対局の並列数
 GRID5 = (32, 40, 48, 56, 64)
 S11 = 'b = "suisho11"\nb_fv = 32'
 DRY = False
@@ -306,43 +321,38 @@ def final_jobs(ep: int, fv: int) -> tuple[list[str], str]:
                     "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)",
                     a_fv=fv,
                 )
-    # 親も同じ 1,000 ペア (= 同じ開始局面) で水匠 11 と対局する。アブレーションで指し手が変わらない局は
-    # 親と同一の棋譜になるので、親との差は対応のある比較になる
-    name = f"final-full-e{ep}@{fv}-vs-s11@32-300k"
+    # 基準は常に full (最良 epoch・最良 FV_SCALE, ユーザー決定)。2,000 ペアで水匠 11 と対局する。
+    # アブレーション (1,000 ペア) と arm (2,000 ペア) の開始局面はこの部分集合 / 同一なので、局面単位で対応が取れる
+    name = f"final-full-e{ep}@{fv}-vs-s11@32-300k-{ARM_PAIRS}p"
     names.append(name)
     text += job(
-        name, f'"009-full/{ep:04d}"', S11, 1000, 4, 56, "最終アブレーションの基準 (親)", a_fv=fv
+        name,
+        f'"009-full/{ep:04d}"',
+        S11,
+        ARM_PAIRS,
+        4,
+        56,
+        "基準 full (アブレーション・データ削減の共通の基準)",
+        a_fv=fv,
     )
     name = f"final-full-e{ep}@{fv}-vs-s11@32-1M"
     names.append(name)
     text += job(
         name, f'"009-full/{ep:04d}"', S11, 500, 7, 56, "full 最良の 1M ノード確認", a_fv=fv
     ).replace("nodes = 300000", "nodes = 1000000")
-    name = f"full-e10@{fv}-vs-s11@32-300k-1000p"
+    # 補助: full-e10 (arm と同じ epoch)。full-rot-e10 との差 = 学習の揺らぎ (ノイズ床)、full との差 = epoch の効果
+    name = f"full-e10@{fv}-vs-s11@32-300k-{ARM_PAIRS}p"
     names.append(name)
     text += job(
         name,
         '"009-full/0010"',
         S11,
-        1000,
+        ARM_PAIRS,
         8,
         56,
-        "arm 比較の基準 (arm-e10 と同じ 1,000 ペア)",
+        "補助: ノイズ床・epoch の効果の見積もり",
         a_fv=fv,
     )
-    for f in (fv - 8, fv, fv + 8):
-        name = f"fv-full-e10@{f}-vs-s11@32-300k"
-        names.append(name)
-        text += job(
-            name,
-            '"009-full/0010"',
-            S11,
-            400,
-            8,
-            56,
-            "FV_SCALE 調整 (arm 比較の基準 full-e10)",
-            a_fv=f,
-        )
     return names, text
 
 
@@ -350,34 +360,81 @@ def eq_epoch(arm: str) -> int:
     return max(1, round(ARM_EPOCHS * FRACTION[arm]))
 
 
+SEL_PAIRS = 300  # 最良 epoch を選ぶための対局 (選択バイアスは許容: ユーザー決定)
+
+
+def sel_epochs(arm: str) -> tuple[int, ...]:
+    """最良 epoch の候補。1 epoch = 43.2 億局面なので p10 は 1 epoch で約 2.9 周 (最良は 4〜5 周付近と予想)。"""
+    return (1, 2, 3, 4, 6) if arm == "p10" else (2, 4, 6, 8, 10)
+
+
 def arm_jobs(arm: str, fv: int, workers: int) -> tuple[list[str], str]:
+    """arm の対局 (水匠 11 相手, full の FV_SCALE)。
+
+    - データ削減 arm: 候補 epoch を 300 ペアずつ → 最良 epoch を決めて 2,000 ペア (arm_followups が追加)
+    - full-rot (複製): e10 を 2,000 ペア (full-e10 と比べて学習の揺らぎを見る)
+    """
     names, text = [], ""
-    for f in (fv, fv - 8, fv + 8):
-        name = f"arm-{arm}-e10@{f}-vs-s11@32-300k"
+    if arm == "full-rot":
+        name = f"arm-full-rot-e10@{fv}-vs-s11@32-300k-{ARM_PAIRS}p"
         names.append(name)
         text += job(
-            name, f'"009-{arm}/0010"', S11, 400, 10, workers, "arm の FV_SCALE 調整 (e10)", a_fv=f
+            name,
+            '"009-full-rot/0010"',
+            S11,
+            ARM_PAIRS,
+            12,
+            workers,
+            "学習の揺らぎ (full-e10 と比べる)",
+            a_fv=fv,
         )
-    # full-e10 (同じ FV_SCALE, 同じ 1,000 ペア) と比べる本命の対局 (水匠 11 相手, 2026-09-30 ユーザー決定)
-    name = f"arm-{arm}-e10@{fv}-vs-s11@32-300k-1000p"
-    names.append(name)
-    text += job(
-        name, f'"009-{arm}/0010"', S11, 1000, 12, workers, "full-e10 と同じ 1,000 ペア", a_fv=fv
-    )
-    e = eq_epoch(arm)
-    name = f"arm-{arm}-e{e}@{fv}-vs-s11@32-300k"
-    names.append(name)
-    text += job(
-        name,
-        f'"009-{arm}/{e:04d}"',
-        S11,
-        400,
-        14,
-        workers,
-        "周回数を full-e10 に揃えた epoch",
-        a_fv=fv,
-    )
+        return names, text
+    for e in sel_epochs(arm):
+        name = f"arm-{arm}-sel-e{e}@{fv}-vs-s11@32-300k"
+        names.append(name)
+        text += job(
+            name,
+            f'"009-{arm}/{e:04d}"',
+            S11,
+            SEL_PAIRS,
+            10,
+            workers,
+            "arm の最良 epoch の選択",
+            a_fv=fv,
+        )
     return names, text
+
+
+def arm_followups(st: dict, arms: list[str], workers: int) -> None:
+    """候補 epoch の対局が揃った arm について、最良 epoch の本命対局 (基準 full と同じ 2,000 ペア) を追加する。"""
+    fv = st["best"]["fv"]
+    st.setdefault("arm_best", {})
+    for arm in arms:
+        if arm == "full-rot" or arm in st["arm_best"]:
+            continue
+        sel = [f"arm-{arm}-sel-e{e}@{fv}-vs-s11@32-300k" for e in sel_epochs(arm)]
+        if not all(job_done(n) or job_failed(n) for n in sel):
+            continue
+        elos = {n: job_elo(n) for n in sel if job_done(n)}
+        if not elos:
+            continue
+        e = int(re.search(r"-sel-e(\d+)@", max(elos, key=elos.get)).group(1))
+        name = f"arm-{arm}-best-e{e}@{fv}-vs-s11@32-300k-{ARM_PAIRS}p"
+        text = job(
+            name,
+            f'"009-{arm}/{e:04d}"',
+            S11,
+            ARM_PAIRS,
+            12,
+            workers,
+            f"{arm} の最良 epoch (基準 full と同じ 2,000 ペア)",
+            a_fv=fv,
+        )
+        append_jobs(f"# pipeline.py が追加: {arm} の最良 epoch = e{e}", text)
+        st["arm_best"][arm] = {"epoch": e, "job": name, "sel": elos}
+        st["arm_jobs"] = st["arm_jobs"] + [name]
+        save_state(st)
+        log(f"{arm}: best epoch e{e} ({elos})")
 
 
 # ---------------------------------------------------------------- status note
@@ -514,28 +571,42 @@ def step(st: dict) -> None:
             fv = st["best"]["fv"]
             names, text = [], ""
             for a in ARMS_A:
-                n, t = arm_jobs(a, fv, 28)
+                n, t = arm_jobs(a, fv, W_ARMS_B)
                 names += n
                 text += t
             st["arm_jobs"] = names
             append_jobs("# 9. pipeline.py が追加: arm (p50/p10/p90/p70/p80) の対局", text)
-            advance(st, "armsB", "arm 5 本の学習が終了。p60 を学習開始、並行して arm の対局 (W=28)")
+            advance(
+                st,
+                "armsB",
+                f"arm 5 本の学習が終了。p60/p30/full-rot を学習開始、並行して arm の対局 (W={W_ARMS_B})",
+            )
 
     elif stage == "armsB":
-        if ensure_training(st, "p60", ARMS_B["p60"], ARM_EPOCHS):
+        arm_followups(st, list(ARMS_A), W_ARMS_B)
+        done = [ensure_training(st, a, g, ARM_EPOCHS) for a, g in ARMS_B.items()]
+        if all(done):
             fv = st["best"]["fv"]
-            n, t = arm_jobs("p60", fv, 56)
-            st["arm_jobs"] = st["arm_jobs"] + n
-            append_jobs("# 10. pipeline.py が追加: arm p60 の対局", t)
+            names, text = [], ""
+            for a in ARMS_B:
+                n, t = arm_jobs(a, fv, 56)
+                names += n
+                text += t
+            st["arm_jobs"] = st["arm_jobs"] + names
+            append_jobs("# 10. pipeline.py が追加: arm p60/p30/full-rot の対局", text)
             set_workers("arm-", 56)
-            advance(st, "rate", "p60 の学習が終了。残りの対局は W=56")
+            advance(st, "rate", "2 波目 (p60/p30/full-rot) の学習が終了。残りの対局は W=56")
 
     elif stage == "rate":
-        for a in list(ARMS_A) + list(ARMS_B) + ["full"]:
-            for e in {ARM_EPOCHS, eq_epoch(a) if a != "full" else ARM_EPOCHS}:
-                if ckpt_has(a, e):
-                    loss_eval(CKPT / f"009-{a}" / f"{e:04d}" / "nn.bin", f"009-{a}-{e:04d}")
-        if all(job_done(n) or job_failed(n) for n in st["arm_jobs"]):
+        arms = list(ARMS_A) + list(ARMS_B)
+        arm_followups(st, arms, 56)
+        for a, info in st.get("arm_best", {}).items():
+            e = info["epoch"]
+            loss_eval(CKPT / f"009-{a}" / f"{e:04d}" / "nn.bin", f"009-{a}-{e:04d}")
+        data_arms = [a for a in arms if a != "full-rot"]
+        if all(a in st.get("arm_best", {}) for a in data_arms) and all(
+            job_done(n) or job_failed(n) for n in st["arm_jobs"]
+        ):
             advance(st, "done", "全工程が終了")
 
 

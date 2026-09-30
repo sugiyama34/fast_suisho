@@ -1,13 +1,19 @@
 """experiment-009 の結果の図と表を作る (対局結果が増えるたびに何度でも実行してよい)。
 
-アブレーション (ユーザー指定, 2026-09-30):
-  x = アブレーションした特徴量の割合 (5/10/20/30%, 0% = 親 = full)、y = 水匠 11 (FV_SCALE 32) に対する Elo
-  設定 4 通り = 順位 {教師 (training), 対局 (match)} × {zero, random}
-  図 5 枚 = 設定ごとの 4 枚 + 4 設定を重ねた 1 枚
-  対象: 最終 (pipeline の state.json にある full の最良 epoch / FV_SCALE) があればそれ、無ければ暫定 (full-e12)
+基準は常に full (最良 epoch・最良 FV_SCALE, 2026-09-30 ユーザー決定)。すべてのネットは水匠 11 (FV_SCALE 32) と
+対局し、Elo を full と比べる。
 
-データ削減との比較: 基準からの Elo の低下 (アブレーション: ablated − full 最良, データ削減: arm-e10 − full-e10) を
-同じ軸に並べる。親と子は同じ開始局面で対局し、対局は決定的なので、局面ごとの対応のある差 (paired) も出す。
+アブレーション (図 5 枚):
+  x = アブレーションした特徴量の割合 (5/10/20/30%, 0% = full)、y = 水匠 11 に対する Elo
+  設定 4 通り = 順位 {教師 (training), 対局 (match)} × {zero, random}。設定ごとの 4 枚 + 重ねた 1 枚
+  最終 (pipeline の state.json の full 最良) があればそれ、無ければ暫定 (full-e12, zero のみ)
+
+「アブレーション X% ≈ データ削減 Y%」:
+  アブレーション: ablated − full、データ削減: arm (その arm の最良 epoch) − full (arm = p90〜p10)。
+  対局は決定的で、開始局面は共通 (アブレーションの 1,000 ペアは full の 2,000 ペアの部分集合、arm は同じ 2,000 ペア)
+  なので、開始局面ごとの対応のある差を取る。データ側の曲線 (削減 0〜90%) に単調減少の当てはめ (PAV) を行い、
+  アブレーションの低下と等しくなる削減率 Y を逆算する。区間は開始局面のブートストラップ (全対局で同じ再標本)。
+  補助: full-e10 − full (epoch の効果)、full-rot-e10 − full-e10 (学習の揺らぎ)
 
 出力: experiments/009-data-scaling/figures/*.png と notes/results.md
 使い方: .venv/bin/python experiments/009-data-scaling/plot_results.py
@@ -17,6 +23,8 @@ from __future__ import annotations
 
 import json
 import math
+import random
+import re
 from pathlib import Path
 
 import matplotlib
@@ -31,17 +39,24 @@ NOTE = HERE / "notes" / "results.md"
 STATE = Path("/mnt/nvme1/sugiyama/pipeline/state.json")
 FV_FLAG = Path("/mnt/nvme1/sugiyama/fv/full.decided")
 PCTS = (5, 10, 20, 30)
-ARMS = ("p90", "p80", "p70", "p60", "p50", "p10")
+DATA_ARMS = ("p90", "p80", "p70", "p60", "p50", "p30", "p10")  # 削ったデータ = 100 − 数字
+ARM_PAIRS = 2000
+N_BOOT = 2000
 
-# 設定ごとの見た目。色はデータ可視化ガイドの検証済みカテゴリ順 (スロット 1〜4) をそのまま使い、
-# 色だけに頼らないよう、順位の種類を marker、zero/random を線種でも区別する
+# 色はデータ可視化ガイドの検証済みカテゴリ順 (スロット 1〜4) をそのまま使い、色だけに頼らないよう
+# 順位の種類を marker、zero/random を線種でも区別する
 SETTINGS = [
     ("teach", "zs", "Training-dist. rank, zero", "#2a78d6", "o", "-"),
     ("teach", "rs", "Training-dist. rank, random", "#eb6834", "o", "--"),
     ("match", "zs", "Match-dist. rank, zero", "#1baf7a", "s", "-"),
     ("match", "rs", "Match-dist. rank, random", "#eda100", "s", "--"),
 ]
+DATA_COLOR = "#4a3aa7"
 INK, INK2, GRID, SURFACE = "#0b0b0b", "#52514e", "#e4e3df", "#fcfcfb"
+RANK_JA = {"teach": "教師", "match": "対局"}
+MODE_JA = {"zs": "zero", "rs": "random"}
+XLAB = "Ablated features (% of possible, rarest first)"
+YLAB = "Elo vs Suisho 11 (FV_SCALE 32)"
 
 
 # ---------------------------------------------------------------- data
@@ -55,12 +70,17 @@ def summary(name: str) -> dict | None:
     return json.loads((d / "summary.json").read_text())
 
 
-def pair_scores(name: str) -> dict[int, float]:
-    out: dict[int, float] = {}
+def pair_scores(name: str) -> dict[str, float]:
+    """開始局面 (sfen) → ペア得点 (0〜2, 先後 2 局の合計)。2 局そろったペアだけ。
+
+    ペア数が違う対局どうしでも開始局面で対応が取れるよう、キーは pair 番号ではなく sfen。"""
+    tot: dict[str, float] = {}
+    cnt: dict[str, int] = {}
     for line in (GAMES / name / "games.jsonl").read_text().splitlines():
         r = json.loads(line)
-        out[r["pair"]] = out.get(r["pair"], 0.0) + r["cand_score"]
-    return out
+        tot[r["sfen"]] = tot.get(r["sfen"], 0.0) + r["cand_score"]
+        cnt[r["sfen"]] = cnt.get(r["sfen"], 0) + 1
+    return {k: v for k, v in tot.items() if cnt[k] == 2}
 
 
 def elo(score: float) -> float:
@@ -68,44 +88,47 @@ def elo(score: float) -> float:
     return -400 * math.log10(1 / score - 1)
 
 
-def paired_delta(child: str, parent: str) -> tuple[float, float, float, int] | None:
-    """同じ開始局面のペアごとの得点差から Elo 差 (child − parent) と 95% CI、棋譜が変わったペア数。"""
-    if summary(child) is None or summary(parent) is None:
-        return None
-    c, p = pair_scores(child), pair_scores(parent)
-    keys = sorted(set(c) & set(p))
-    if not keys:
-        return None
-    d = [(c[k] - p[k]) / 2 for k in keys]  # ペア得点 (0〜2) → 1 局あたりの得点
-    n = len(d)
-    mean = sum(d) / n
-    var = sum((x - mean) ** 2 for x in d) / max(n - 1, 1)
-    se = math.sqrt(var / n)
-    base = sum(p[k] for k in keys) / (2 * n)
-    delta = elo(base + mean) - elo(base)
-    lo, hi = elo(base + mean - 1.96 * se) - elo(base), elo(base + mean + 1.96 * se) - elo(base)
-    changed = sum(1 for x in d if x != 0)
-    return delta, lo, hi, changed
+def elo_on(scores: dict[str, float], keys: list[str]) -> tuple[float, float, float]:
+    """開始局面の集合 keys の上での Elo と 95% CI (ペア得点の正規近似)。"""
+    v = [scores[k] / 2 for k in keys]
+    n = len(v)
+    m = sum(v) / n
+    se = math.sqrt(sum((x - m) ** 2 for x in v) / max(n - 1, 1) / n)
+    return elo(m), elo(m - 1.96 * se), elo(m + 1.96 * se)
+
+
+def pct_ci(vals: list) -> tuple[float, float]:
+    v = sorted(x for x in vals if x is not None)
+    if not v:
+        return (math.nan, math.nan)
+    return v[int(0.025 * (len(v) - 1))], v[int(0.975 * (len(v) - 1))]
+
+
+def best() -> tuple[int, int] | None:
+    if STATE.exists():
+        b = json.loads(STATE.read_text()).get("best")
+        if b:
+            return b["epoch"], b["fv"]
+    return None
 
 
 def ablation_names() -> tuple[str, str, dict, str]:
-    """(見出し, 親の対局名, {(rank, mode, pct): 対局名}, 親の表記)。最終があれば最終、無ければ暫定 e12。"""
-    if STATE.exists():
-        st = json.loads(STATE.read_text())
-        if "best" in st:
-            ep, fv = st["best"]["epoch"], st["best"]["fv"]
-            names = {
-                (r, m, p): f"final-full-e{ep}-{m}-{r}-f{p}@{fv}-vs-s11@32-300k"
-                for r in ("teach", "match")
-                for m in ("zs", "rs")
-                for p in PCTS
-            }
-            return (
-                f"final: full-e{ep} @ FV_SCALE {fv}, 1,000 pairs",
-                f"final-full-e{ep}@{fv}-vs-s11@32-300k",
-                names,
-                f"full-e{ep}",
-            )
+    """(見出し, 基準 full の対局名, {(rank, mode, pct): 対局名}, 基準の表記)。"""
+    b = best()
+    if b:
+        ep, fv = b
+        names = {
+            (r, m, p): f"final-full-e{ep}-{m}-{r}-f{p}@{fv}-vs-s11@32-300k"
+            for r in ("teach", "match")
+            for m in ("zs", "rs")
+            for p in PCTS
+        }
+        return (
+            f"final: full-e{ep} @ FV_SCALE {fv}",
+            f"final-full-e{ep}@{fv}-vs-s11@32-300k-{ARM_PAIRS}p",
+            names,
+            f"full-e{ep}",
+        )
     fv = int(FV_FLAG.read_text().strip()) if FV_FLAG.exists() else 0
     names = {
         (r, "zs", p): f"full-e12-zs-{r}-f{p}-vs-s11@32-300k"
@@ -113,25 +136,30 @@ def ablation_names() -> tuple[str, str, dict, str]:
         for p in PCTS
     }
     return (
-        f"provisional: full-e12 @ FV_SCALE {fv}, 400 pairs",
+        f"provisional: full-e12 @ FV_SCALE {fv}",
         f"fv-full-e12@{fv}-vs-s11@32-300k",
         names,
         "full-e12",
     )
 
 
+def arm_best_job(arm: str, fv: int) -> tuple[str, int] | None:
+    """arm の最良 epoch の本命対局 (pipeline が追加する arm-<arm>-best-e<N>@...-2000p) の名前と epoch。"""
+    for d in sorted(GAMES.glob(f"arm-{arm}-best-e*@{fv}-vs-s11@32-300k-{ARM_PAIRS}p")):
+        m = re.match(rf"arm-{re.escape(arm)}-best-e(\d+)@", d.name)
+        if m and summary(d.name) is not None:
+            return d.name, int(m.group(1))
+    return None
+
+
 # ---------------------------------------------------------------- plots
 
 
-def style(ax, title: str) -> None:
+def style(ax, title: str, xlabel: str, ylabel: str) -> None:
     ax.set_facecolor(SURFACE)
     ax.set_title(title, color=INK, fontsize=11, loc="left")
-    ax.set_xlabel(
-        "Ablated features (% of structurally possible, lowest count first)", color=INK2, fontsize=9
-    )
-    ax.set_ylabel("Elo vs Suisho 11 (FV_SCALE 32)", color=INK2, fontsize=9)
-    ax.set_xticks([0, *PCTS])
-    ax.set_xticklabels(["0\n(parent)", *[f"{p}" for p in PCTS]])
+    ax.set_xlabel(xlabel, color=INK2, fontsize=9)
+    ax.set_ylabel(ylabel, color=INK2, fontsize=9)
     ax.grid(axis="y", color=GRID, linewidth=0.8)
     for s in ("top", "right"):
         ax.spines[s].set_visible(False)
@@ -140,66 +168,65 @@ def style(ax, title: str) -> None:
     ax.tick_params(colors=INK2, labelsize=8)
 
 
-def series(parent: dict, names: dict, rank: str, mode: str) -> tuple[list, list, list, list]:
-    xs, ys, lo, hi = [0], [parent["elo"]], [parent["elo_ci95"][0]], [parent["elo_ci95"][1]]
-    for p in PCTS:
-        s = summary(names.get((rank, mode, p), ""))
-        if s is None:
-            continue
-        xs.append(p)
-        ys.append(s["elo"])
-        lo.append(s["elo_ci95"][0])
-        hi.append(s["elo_ci95"][1])
-    return xs, ys, lo, hi
-
-
-def draw(ax, xs, ys, lo, hi, color, marker, ls, label, offset=0.0, end_label=False) -> None:
+def draw(ax, xs, ys, lo, hi, color, marker, ls, label, offset=0.0) -> None:
     x = [v + offset for v in xs]
     yerr = [[y - a for y, a in zip(ys, lo)], [b - y for y, b in zip(ys, hi)]]
     ax.errorbar(
         x, ys, yerr=yerr, color=color, marker=marker, markersize=6, linestyle=ls, linewidth=2,
         capsize=3, elinewidth=1, markeredgecolor=SURFACE, markeredgewidth=1.5, label=label,
     )  # fmt: skip
-    if end_label and len(xs) > 1:
-        ax.annotate(label, (x[-1], ys[-1]), xytext=(6, 0), textcoords="offset points", fontsize=7,
-                    color=INK2, va="center")  # fmt: skip
 
 
 def plot_ablation() -> list[dict]:
+    """アブレーションの図 5 枚。各点は基準 full と同じ開始局面 (アブレーション側の局面) の上の Elo。"""
     head, parent_name, names, parent_label = ablation_names()
-    parent = summary(parent_name)
     FIG.mkdir(exist_ok=True)
-    if parent is None:
+    if summary(parent_name) is None:
         print(f"parent {parent_name} not finished yet; no ablation plots")
         return []
+    P = pair_scores(parent_name)
     rows = []
     fig_all, ax_all = plt.subplots(figsize=(7.5, 4.8), facecolor=SURFACE)
+    parent_y = None
+    ticks = [0, *PCTS]
+    tick_labels = [f"0\n({parent_label})", *[str(p) for p in PCTS]]
     for i, (rank, mode, label, color, marker, ls) in enumerate(SETTINGS):
-        xs, ys, lo, hi = series(parent, names, rank, mode)
-        for p, y, a, b in zip(xs[1:], ys[1:], lo[1:], hi[1:]):
-            pd = paired_delta(names[(rank, mode, p)], parent_name)
-            rows.append(
-                {"rank": rank, "mode": mode, "pct": p, "elo": y, "ci": (a, b), "paired": pd}
-            )
-        if len(xs) > 1:
-            draw(ax_all, xs, ys, lo, hi, color, marker, ls, label, offset=(i - 1.5) * 0.35)
+        pts = []
+        for p in PCTS:
+            n = names.get((rank, mode, p))
+            if n is None or summary(n) is None:
+                continue
+            C = pair_scores(n)
+            keys = sorted(set(C) & set(P))
+            y, lo, hi = elo_on(C, keys)
+            parent_y = elo_on(P, keys)
+            changed = sum(1 for k in keys if C[k] != P[k])
+            rows.append({"rank": rank, "mode": mode, "pct": p, "elo": y, "ci": (lo, hi),
+                         "parent": parent_y[0], "n": len(keys), "changed": changed})  # fmt: skip
+            pts.append((p, y, lo, hi))
+        if not pts:
+            continue
+        xs = [0] + [q[0] for q in pts]
+        ys = [parent_y[0]] + [q[1] for q in pts]
+        lo = [parent_y[1]] + [q[2] for q in pts]
+        hi = [parent_y[2]] + [q[3] for q in pts]
+        draw(ax_all, xs, ys, lo, hi, color, marker, ls, label, offset=(i - 1.5) * 0.35)
         fig, ax = plt.subplots(figsize=(5.5, 3.8), facecolor=SURFACE)
-        ax.axhline(parent["elo"], color=INK2, linewidth=1, linestyle=":", zorder=0)
+        ax.axhline(parent_y[0], color=INK2, linewidth=1, linestyle=":", zorder=0)
         draw(ax, xs, ys, lo, hi, color, marker, ls, label)
-        style(ax, f"{label}\n{head}")
+        style(ax, f"{label}\n{head}", XLAB, YLAB)
+        ax.set_xticks(ticks)
+        ax.set_xticklabels(tick_labels)
         fig.tight_layout()
         fig.savefig(FIG / f"ablation_{rank}_{mode}.png", dpi=160)
         plt.close(fig)
-    ax_all.axhline(parent["elo"], color=INK2, linewidth=1, linestyle=":", zorder=0)
-    ax_all.annotate(
-        f"{parent_label} (parent)",
-        (30.8, parent["elo"]),
-        fontsize=7,
-        color=INK2,
-        va="bottom",
-        ha="right",
-    )
-    style(ax_all, f"Rare-feature ablation, all settings\n{head}")
+    if parent_y is None:
+        plt.close(fig_all)
+        return rows
+    ax_all.axhline(parent_y[0], color=INK2, linewidth=1, linestyle=":", zorder=0)
+    style(ax_all, f"Rare-feature ablation, all settings\n{head}", XLAB, YLAB)
+    ax_all.set_xticks(ticks)
+    ax_all.set_xticklabels(tick_labels)
     ax_all.legend(fontsize=8, frameon=False, labelcolor=INK)
     fig_all.tight_layout()
     fig_all.savefig(FIG / "ablation_merged.png", dpi=160)
@@ -207,59 +234,143 @@ def plot_ablation() -> list[dict]:
     return rows
 
 
-def plot_data_vs_ablation(abl_rows: list[dict]) -> list[dict]:
-    """データ削減 arm (e10) の Elo 低下と、アブレーションの Elo 低下を同じ軸に並べる。"""
-    fv = None
-    if STATE.exists():
-        st = json.loads(STATE.read_text())
-        fv = st.get("best", {}).get("fv")
-    if fv is None:
-        return []
-    ref = f"full-e10@{fv}-vs-s11@32-300k-1000p"
-    rows = []
-    for arm in ARMS:
-        name = f"arm-{arm}-e10@{fv}-vs-s11@32-300k-1000p"
-        s, pd = summary(name), paired_delta(name, ref)
-        if s is None or pd is None:
-            continue
-        removed = 100 - int(arm[1:])
-        rows.append(
-            {
-                "arm": arm,
-                "removed": removed,
-                "elo": s["elo"],
-                "ci": tuple(s["elo_ci95"]),
-                "paired": pd,
-            }
+# ---------------------------------------------------------------- equivalence
+
+
+def pav_decreasing(ys: list[float]) -> list[float]:
+    """単調非増加の最小二乗当てはめ (pool-adjacent-violators, 等重み)。"""
+    blocks = [[y, 1] for y in ys]  # [平均, 個数]
+    i = 0
+    while i < len(blocks) - 1:
+        if blocks[i][0] < blocks[i + 1][0]:
+            a, b = blocks[i], blocks[i + 1]
+            blocks[i] = [(a[0] * a[1] + b[0] * b[1]) / (a[1] + b[1]), a[1] + b[1]]
+            del blocks[i + 1]
+            i = max(i - 1, 0)
+        else:
+            i += 1
+    out: list[float] = []
+    for m, n in blocks:
+        out += [m] * n
+    return out
+
+
+def invert(xs: list[float], fs: list[float], target: float) -> float:
+    """単調非増加の折れ線 f で f(Y) = target となる最小の Y (0 以下なら 0、末端より下なら inf)。"""
+    if target >= fs[0]:
+        return 0.0
+    for (x0, f0), (x1, f1) in zip(zip(xs, fs), zip(xs[1:], fs[1:])):
+        if f1 <= target <= f0:
+            return x0 if f0 == f1 else x0 + (x1 - x0) * (f0 - target) / (f0 - f1)
+    return math.inf
+
+
+def equivalence() -> dict | None:
+    b = best()
+    if not b:
+        return None
+    ep, fv = b
+    ref = f"final-full-e{ep}@{fv}-vs-s11@32-300k-{ARM_PAIRS}p"
+    if summary(ref) is None:
+        return None
+    R = pair_scores(ref)
+    keys = sorted(R)
+    data = {}
+    for arm in DATA_ARMS:
+        found = arm_best_job(arm, fv)
+        if found:
+            data[100 - int(arm[1:])] = (arm, found[1], pair_scores(found[0]))
+    abl = {}
+    for rank in ("teach", "match"):
+        for m in ("zs", "rs"):
+            for pct in PCTS:
+                n = f"final-full-e{ep}-{m}-{rank}-f{pct}@{fv}-vs-s11@32-300k"
+                if summary(n) is not None:
+                    abl[(rank, m, pct)] = pair_scores(n)
+    aux = {}
+    for key, n in (("e10", f"full-e10@{fv}-vs-s11@32-300k-{ARM_PAIRS}p"),
+                   ("rot", f"arm-full-rot-e10@{fv}-vs-s11@32-300k-{ARM_PAIRS}p")):  # fmt: skip
+        if summary(n) is not None:
+            aux[key] = pair_scores(n)
+
+    def delta(child: dict[str, float], idx: list[int]) -> float | None:
+        """基準 full に対する Elo 差 (child − full)。idx は keys の添字の再標本。"""
+        ks = [keys[i] for i in idx if keys[i] in child]
+        if not ks:
+            return None
+        base = sum(R[k] for k in ks) / (2 * len(ks))
+        diff = sum(child[k] - R[k] for k in ks) / (2 * len(ks))
+        return elo(base + diff) - elo(base)
+
+    removed = sorted(data)
+
+    def curve(idx: list[int]) -> tuple[list[float], list[float]]:
+        return [0.0, *map(float, removed)], pav_decreasing(
+            [0.0, *(delta(data[y][2], idx) for y in removed)]
         )
-    if not rows:
-        return []
+
+    allidx = list(range(len(keys)))
+    rng = random.Random(20260930)
+    boots = [[rng.randrange(len(keys)) for _ in keys] for _ in range(N_BOOT)]
+    out = {"ref_label": f"full-e{ep}", "data": [], "abl": [], "aux": {}}
+    for y in removed:
+        arm, e, c = data[y]
+        out["data"].append({"arm": arm, "epoch": e, "removed": y, "delta": delta(c, allidx),
+                            "ci": pct_ci([delta(c, bb) for bb in boots])})  # fmt: skip
+    if "e10" in aux:
+        out["aux"]["epoch"] = (
+            delta(aux["e10"], allidx),
+            pct_ci([delta(aux["e10"], bb) for bb in boots]),
+        )
+        if "rot" in aux:
+
+            def dd(idx: list[int]) -> float | None:
+                a, b_ = delta(aux["rot"], idx), delta(aux["e10"], idx)
+                return None if a is None or b_ is None else a - b_
+
+            out["aux"]["noise"] = (dd(allidx), pct_ci([dd(bb) for bb in boots]))
+    xs, fs = curve(allidx) if removed else ([], [])
+    curves = [curve(bb) for bb in boots] if removed else []
+    for (rank, m, pct), c in abl.items():
+        row = {"rank": rank, "mode": m, "pct": pct, "delta": delta(c, allidx),
+               "ci": pct_ci([delta(c, bb) for bb in boots])}  # fmt: skip
+        if removed:
+            row["y"] = invert(xs, fs, row["delta"])
+            row["y_ci"] = pct_ci([invert(*cv, delta(c, bb)) for cv, bb in zip(curves, boots)])
+        out["abl"].append(row)
+    return out
+
+
+def plot_equivalence(eq: dict) -> None:
+    """補助の図: 基準 full に対する Elo の差 (データ削減と、アブレーションの 4 設定)。"""
     fig, ax = plt.subplots(figsize=(7.5, 4.8), facecolor=SURFACE)
     ax.axhline(0, color=INK2, linewidth=1, linestyle=":", zorder=0)
-    xs = [r["removed"] for r in rows]
-    ys = [r["paired"][0] for r in rows]
-    lo = [r["paired"][1] for r in rows]
-    hi = [r["paired"][2] for r in rows]
-    draw(ax, xs, ys, lo, hi, "#4a3aa7", "D", "-", "Training data removed (arm-e10 − full-e10)")
+    if "noise" in eq["aux"]:
+        lo, hi = eq["aux"]["noise"][1]
+        ax.axhspan(
+            lo,
+            hi,
+            color=GRID,
+            alpha=0.7,
+            zorder=0,
+            label="Run-to-run noise (full-rot − full at e10, 95%)",
+        )
+    r = eq["data"]
+    if r:
+        draw(ax, [0] + [x["removed"] for x in r], [0] + [x["delta"] for x in r], [0] + [x["ci"][0] for x in r],
+             [0] + [x["ci"][1] for x in r], DATA_COLOR, "D", "-", "Training data removed (arm at its best epoch)")  # fmt: skip
     for i, (rank, mode, label, color, marker, ls) in enumerate(SETTINGS):
-        pts = [r for r in abl_rows if r["rank"] == rank and r["mode"] == mode and r["paired"]]
-        if pts:
-            draw(ax, [r["pct"] for r in pts], [r["paired"][0] for r in pts], [r["paired"][1] for r in pts],
-                 [r["paired"][2] for r in pts], color, marker, ls, f"Features ablated: {label}",
+        a = [x for x in eq["abl"] if x["rank"] == rank and x["mode"] == mode]
+        if a:
+            draw(ax, [0] + [x["pct"] for x in a], [0] + [x["delta"] for x in a], [0] + [x["ci"][0] for x in a],
+                 [0] + [x["ci"][1] for x in a], color, marker, ls, f"Features ablated: {label}",
                  offset=(i - 1.5) * 0.35)  # fmt: skip
-    ax.set_facecolor(SURFACE)
-    ax.set_title("Elo lost vs own reference (paired, 95% CI)", color=INK, fontsize=11, loc="left")
-    ax.set_xlabel("Removed (% of training data, or % of features ablated)", color=INK2, fontsize=9)
-    ax.set_ylabel("Δ Elo vs reference (vs Suisho 11)", color=INK2, fontsize=9)
-    ax.grid(axis="y", color=GRID, linewidth=0.8)
-    for s_ in ("top", "right"):
-        ax.spines[s_].set_visible(False)
-    ax.tick_params(colors=INK2, labelsize=8)
+    style(ax, f"Elo change vs {eq['ref_label']} (same openings, bootstrap 95% CI)",
+          "% of training data removed  /  % of features ablated", f"Δ Elo vs {eq['ref_label']} (all vs Suisho 11)")  # fmt: skip
     ax.legend(fontsize=7, frameon=False, labelcolor=INK)
     fig.tight_layout()
     fig.savefig(FIG / "ablation_vs_data.png", dpi=160)
     plt.close(fig)
-    return rows
 
 
 # ---------------------------------------------------------------- note
@@ -269,60 +380,82 @@ def fmt_ci(a: float, b: float) -> str:
     return f"[{a:+.0f}, {b:+.0f}]"
 
 
-def write_note(abl_rows: list[dict], data_rows: list[dict]) -> None:
-    head, parent_name, _, parent_label = ablation_names()
-    parent = summary(parent_name)
+def fy(v: float) -> str:
+    return "0%" if v == 0 else (">90%" if math.isinf(v) else f"{v:.0f}%")
+
+
+def write_note(abl_rows: list[dict], eq: dict | None) -> None:
+    head, _, _, parent_label = ablation_names()
     lines = [
         "# experiment-009 の結果 (自動生成)\n",
-        "`plot_results.py` が対局結果から作る (手で編集しない)。Elo は水匠 11 (FV_SCALE 32) 相手、300k ノード。",
-        "「対応のある差」は親と同じ開始局面のペアごとの得点差から計算した Elo 差 (対局は決定的なので、",
-        "アブレーションで指し手が変わらない局は親と同じ棋譜になる)。\n",
+        "`plot_results.py` が対局結果から作る (手で編集しない)。すべて水匠 11 (FV_SCALE 32) との対局、300k ノード。",
+        "**基準は常に full** (最良 epoch・最良 FV_SCALE)。対局は決定的なので、アブレーションで指し手が変わらない局は",
+        "full と同じ棋譜になり、同じ開始局面どうしの差は対応のある比較になる。\n",
         f"## 稀な特徴量のアブレーション ({head})\n",
     ]
-    if parent:
-        lo, hi = parent["elo_ci95"]
-        lines.append(
-            f"- 親 {parent_label}: **{parent['elo']:+.1f} Elo** {fmt_ci(lo, hi)} ({parent['pairs']} ペア)\n"
-        )
-    lines += [
-        "![all settings](../figures/ablation_merged.png)\n",
-        "| 順位 | モード | 下位 % | Elo vs 水匠 11 | 95% CI | 親との対応のある差 | 95% CI | 棋譜が変わったペア |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- |",
-    ]
-    rank_ja = {"teach": "教師", "match": "対局"}
-    mode_ja = {"zs": "zero", "rs": "random"}
-    for r in abl_rows:
-        pd = r["paired"]
-        pdtxt = (f"{pd[0]:+.1f}", fmt_ci(pd[1], pd[2]), str(pd[3])) if pd else ("–", "–", "–")
-        lines.append(
-            f"| {rank_ja[r['rank']]} | {mode_ja[r['mode']]} | {r['pct']} | {r['elo']:+.1f} | "
-            f"{fmt_ci(*r['ci'])} | {pdtxt[0]} | {pdtxt[1]} | {pdtxt[2]} |"
-        )
-    lines.append("")
-    for rank, mode, label, *_ in SETTINGS:
-        if (FIG / f"ablation_{rank}_{mode}.png").exists():
-            lines.append(f"![{label}](../figures/ablation_{rank}_{mode}.png)")
-    if data_rows:
+    if abl_rows:
         lines += [
-            "\n## データ削減との比較 (e10, 同じ 1,000 ペア)\n",
-            "![ablation vs data](../figures/ablation_vs_data.png)\n",
-            "| arm | 削ったデータ | Elo vs 水匠 11 | 95% CI | full-e10 との対応のある差 | 95% CI |",
-            "| --- | --- | --- | --- | --- | --- |",
+            "![all settings](../figures/ablation_merged.png)\n",
+            f"| 順位 | モード | 下位 % | Elo vs 水匠 11 | 95% CI | 同じ局面での {parent_label} | 局面数 | 棋譜が変わったペア |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- |",
         ]
-        for r in data_rows:
-            pd = r["paired"]
+        for r in abl_rows:
             lines.append(
-                f"| {r['arm']} | {r['removed']}% | {r['elo']:+.1f} | {fmt_ci(*r['ci'])} | "
-                f"{pd[0]:+.1f} | {fmt_ci(pd[1], pd[2])} |"
+                f"| {RANK_JA[r['rank']]} | {MODE_JA[r['mode']]} | {r['pct']} | {r['elo']:+.1f} | "
+                f"{fmt_ci(*r['ci'])} | {r['parent']:+.1f} | {r['n']} | {r['changed']} |"
             )
+        lines.append("")
+        for rank, mode, label, *_ in SETTINGS:
+            if (FIG / f"ablation_{rank}_{mode}.png").exists():
+                lines.append(f"![{label}](../figures/ablation_{rank}_{mode}.png)")
+    else:
+        lines.append("(まだ結果が無い)")
+    if eq:
+        ref = eq["ref_label"]
+        lines += [
+            f"\n## アブレーション X% ≈ データ削減 Y% (基準 {ref})\n",
+            f"アブレーション: ablated − {ref}、データ削減: arm (最良 epoch) − {ref} (どれも水匠 11 に対する Elo の差)。",
+            "Y はデータ側の曲線 (単調減少に当てはめ) で同じ低下になる削減率。区間は開始局面のブートストラップ (2,000 回)。\n",
+            f"| 順位 | モード | アブレーション X | {ref} からの差 (Elo) | 95% CI | 同等なデータ削減 Y | 95% 区間 |",
+            "| --- | --- | --- | --- | --- | --- | --- |",
+        ]
+        for r in eq["abl"]:
+            y = (
+                (fy(r["y"]), f"[{fy(r['y_ci'][0])}, {fy(r['y_ci'][1])}]")
+                if "y" in r
+                else ("–", "–")
+            )
+            lines.append(
+                f"| {RANK_JA[r['rank']]} | {MODE_JA[r['mode']]} | {r['pct']}% | {r['delta']:+.1f} | "
+                f"{fmt_ci(*r['ci'])} | {y[0]} | {y[1]} |"
+            )
+        lines += [
+            f"\n| データ削減 arm | 最良 epoch | 削った割合 | {ref} からの差 (Elo) | 95% CI |",
+            "| --- | --- | --- | --- | --- |",
+        ]
+        for r in eq["data"]:
+            lines.append(
+                f"| {r['arm']} | e{r['epoch']} | {r['removed']}% | {r['delta']:+.1f} | {fmt_ci(*r['ci'])} |"
+            )
+        if "epoch" in eq["aux"]:
+            d, ci = eq["aux"]["epoch"]
+            lines.append(f"| (補助) full-e10: epoch の効果 | e10 | 0% | {d:+.1f} | {fmt_ci(*ci)} |")
+        if "noise" in eq["aux"]:
+            d, ci = eq["aux"]["noise"]
+            lines.append(
+                f"| (補助) full-rot-e10 − full-e10: 学習の揺らぎ | e10 | 0% | {d:+.1f} | {fmt_ci(*ci)} |"
+            )
+        lines.append("\n![ablation vs data](../figures/ablation_vs_data.png)")
     NOTE.write_text("\n".join(lines) + "\n")
 
 
 def main() -> None:
     abl = plot_ablation()
-    data = plot_data_vs_ablation(abl)
-    write_note(abl, data)
-    print(f"ablation rows {len(abl)}, data rows {len(data)} -> {NOTE}")
+    eq = equivalence()
+    if eq and (eq["data"] or eq["abl"]):
+        plot_equivalence(eq)
+    write_note(abl, eq)
+    print(f"ablation rows {len(abl)}, equivalence {'yes' if eq else 'no'} -> {NOTE}")
 
 
 if __name__ == "__main__":
