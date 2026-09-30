@@ -3,7 +3,7 @@
 - 待つもの: games/fv-full-e8@{32,40,48,56,64}-vs-s11@32-300k/queue_done.json (5 本すべて)
 - 決め方: Elo (A = full-e8@FV) が最大の FV_SCALE (2026-09-30 ユーザー決定: 選択バイアスは許容)
 - やること (match_queue.toml を一時ファイル経由で置き換える):
-  1. full-e12 のアブレーション (名前が full-e12-zs- で始まるジョブ) に a_fv = b_fv = 最良値を入れる
+  1. full-e12 のアブレーション (名前が full-e12-zs- で始まるジョブ, 相手は水匠 11@32) に a_fv = 最良値を入れる
      (アブレーションしたネットは親の FV_SCALE をそのまま使う)
   2. full-e12 / e16 / e20 の FV_SCALE 格子 (最良値 ± 8 の 3 点, vs 水匠 11@32, 400 ペア) を追加
   3. /mnt/nvme1/sugiyama/fv/full.decided に最良値を書く (e12 アブレーションの requires が解ける)
@@ -42,7 +42,7 @@ def main() -> None:
     out = [blocks[0]]
     for b in blocks[1:]:
         if re.search(r'(?m)^name = "full-e12-zs-', b) and not re.search(r"(?m)^a_fv", b):
-            b = re.sub(r'(?m)^(b = "009-full/0012"\n)', rf"a_fv = {best}\n\1b_fv = {best}\n", b)
+            b = re.sub(r"(?m)^(b = \"suisho11\"\n)", rf"a_fv = {best}\n\1", b)
         out.append("[[job]]\n" + b)
     s = "".join(out)
     s += (
