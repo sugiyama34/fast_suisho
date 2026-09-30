@@ -51,6 +51,7 @@ note = "パイプライン確認"
 [[job]]
 name = "full-e12-zs-teach-f5-vs-s11@32-300k"
 a = { ablate = "full-e12-zs-teach-f5", ckpt = "009-full/0012", select = "--arm full --percent 5 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", "/mnt/nvme1/sugiyama/fv/full.decided"] }
+a_fv = 40
 b = "suisho11"
 b_fv = 32
 nodes = 300000
@@ -61,6 +62,7 @@ note = "暫定 (e12 基準, 水匠 11 と対局。親 full-e12 は同じ 400 ペ
 [[job]]
 name = "full-e12-zs-teach-f10-vs-s11@32-300k"
 a = { ablate = "full-e12-zs-teach-f10", ckpt = "009-full/0012", select = "--arm full --percent 10 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", "/mnt/nvme1/sugiyama/fv/full.decided"] }
+a_fv = 40
 b = "suisho11"
 b_fv = 32
 nodes = 300000
@@ -71,6 +73,7 @@ note = "暫定 (e12 基準, 水匠 11 と対局。親 full-e12 は同じ 400 ペ
 [[job]]
 name = "full-e12-zs-teach-f20-vs-s11@32-300k"
 a = { ablate = "full-e12-zs-teach-f20", ckpt = "009-full/0012", select = "--arm full --percent 20 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", "/mnt/nvme1/sugiyama/fv/full.decided"] }
+a_fv = 40
 b = "suisho11"
 b_fv = 32
 nodes = 300000
@@ -81,6 +84,7 @@ note = "暫定 (e12 基準, 水匠 11 と対局。親 full-e12 は同じ 400 ペ
 [[job]]
 name = "full-e12-zs-teach-f30-vs-s11@32-300k"
 a = { ablate = "full-e12-zs-teach-f30", ckpt = "009-full/0012", select = "--arm full --percent 30 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", "/mnt/nvme1/sugiyama/fv/full.decided"] }
+a_fv = 40
 b = "suisho11"
 b_fv = 32
 nodes = 300000
@@ -91,6 +95,7 @@ note = "暫定 (e12 基準, 水匠 11 と対局。親 full-e12 は同じ 400 ペ
 [[job]]
 name = "full-e12-zs-match-f5-vs-s11@32-300k"
 a = { ablate = "full-e12-zs-match-f5", ckpt = "009-full/0012", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 5 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", "/mnt/nvme1/sugiyama/fv/full.decided"] }
+a_fv = 40
 b = "suisho11"
 b_fv = 32
 nodes = 300000
@@ -101,6 +106,7 @@ note = "暫定 (e12 基準, 水匠 11 と対局。親 full-e12 は同じ 400 ペ
 [[job]]
 name = "full-e12-zs-match-f10-vs-s11@32-300k"
 a = { ablate = "full-e12-zs-match-f10", ckpt = "009-full/0012", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 10 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", "/mnt/nvme1/sugiyama/fv/full.decided"] }
+a_fv = 40
 b = "suisho11"
 b_fv = 32
 nodes = 300000
@@ -111,6 +117,7 @@ note = "暫定 (e12 基準, 水匠 11 と対局。親 full-e12 は同じ 400 ペ
 [[job]]
 name = "full-e12-zs-match-f20-vs-s11@32-300k"
 a = { ablate = "full-e12-zs-match-f20", ckpt = "009-full/0012", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 20 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", "/mnt/nvme1/sugiyama/fv/full.decided"] }
+a_fv = 40
 b = "suisho11"
 b_fv = 32
 nodes = 300000
@@ -121,6 +128,7 @@ note = "暫定 (e12 基準, 水匠 11 と対局。親 full-e12 は同じ 400 ペ
 [[job]]
 name = "full-e12-zs-match-f30-vs-s11@32-300k"
 a = { ablate = "full-e12-zs-match-f30", ckpt = "009-full/0012", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 30 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", "/mnt/nvme1/sugiyama/fv/full.decided"] }
+a_fv = 40
 b = "suisho11"
 b_fv = 32
 nodes = 300000
@@ -294,4 +302,106 @@ nodes = 300000
 pairs = 400
 priority = 30
 note = "FV_SCALE 調整 (学習ネット)"
+
+
+# 7. fv_decide.py が自動追加 (2026-09-30 23:19:11): full-e8 の格子で最良の FV_SCALE = 40 (Elo {32: -138.99, 40: -132.94, 48: -140.01, 56: -149.78, 64: -185.11})。
+#    e12/e16/e20 は最良値 ± 8 の 3 点
+[[job]]
+name = "fv-full-e12@40-vs-s11@32-300k"
+a = "009-full/0012"
+a_fv = 40
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 20
+note = "FV_SCALE 調整 (学習ネット, e8 の最良値 ± 8)"
+
+[[job]]
+name = "fv-full-e12@32-vs-s11@32-300k"
+a = "009-full/0012"
+a_fv = 32
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 20
+note = "FV_SCALE 調整 (学習ネット, e8 の最良値 ± 8)"
+
+[[job]]
+name = "fv-full-e12@48-vs-s11@32-300k"
+a = "009-full/0012"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 20
+note = "FV_SCALE 調整 (学習ネット, e8 の最良値 ± 8)"
+
+[[job]]
+name = "fv-full-e16@40-vs-s11@32-300k"
+a = "009-full/0016"
+a_fv = 40
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "FV_SCALE 調整 (学習ネット, e8 の最良値 ± 8)"
+
+[[job]]
+name = "fv-full-e16@32-vs-s11@32-300k"
+a = "009-full/0016"
+a_fv = 32
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "FV_SCALE 調整 (学習ネット, e8 の最良値 ± 8)"
+
+[[job]]
+name = "fv-full-e16@48-vs-s11@32-300k"
+a = "009-full/0016"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "FV_SCALE 調整 (学習ネット, e8 の最良値 ± 8)"
+
+[[job]]
+name = "fv-full-e20@40-vs-s11@32-300k"
+a = "009-full/0020"
+a_fv = 40
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "FV_SCALE 調整 (学習ネット, e8 の最良値 ± 8)"
+
+[[job]]
+name = "fv-full-e20@32-vs-s11@32-300k"
+a = "009-full/0020"
+a_fv = 32
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "FV_SCALE 調整 (学習ネット, e8 の最良値 ± 8)"
+
+[[job]]
+name = "fv-full-e20@48-vs-s11@32-300k"
+a = "009-full/0020"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "FV_SCALE 調整 (学習ネット, e8 の最良値 ± 8)"
 
