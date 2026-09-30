@@ -6,4 +6,10 @@ full と同じ棋譜になり、同じ開始局面どうしの差は対応のあ
 
 ## 稀な特徴量のアブレーション (provisional: full-e12 @ FV_SCALE 40)
 
-(まだ結果が無い)
+![all settings](../figures/ablation_merged.png)
+
+| 順位 | モード | 下位 % | Elo vs 水匠 11 | 95% CI | 同じ局面での full-e12 | 局面数 | 棋譜が変わったペア |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 教師 | zero | 5 | -136.5 | [-162, -112] | -140.0 | 400 | 115 |
+
+![Training-dist. rank, zero](../figures/ablation_teach_zs.png)
