@@ -296,6 +296,8 @@ def full_grid_names(st: dict) -> list[str]:
     names += [
         f"fv-full-e{ep}@{fv}-vs-s11@32-300k" for ep in (12, 16, 20) for fv in (f - 8, f, f + 8)
     ]
+    # 10-01 追加: e12/e16 で上端 (f + 8 = 48) が最良だったので、e16/e20 は f + 16 (= 56) も測る
+    names += [f"fv-full-e{ep}@{f + 16}-vs-s11@32-300k" for ep in (16, 20)]
     return names
 
 

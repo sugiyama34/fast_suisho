@@ -405,3 +405,27 @@ pairs = 400
 priority = 30
 note = "FV_SCALE 調整 (学習ネット, e8 の最良値 ± 8)"
 
+
+# 10-01 追加 (Claude): e12/e16 で FV_SCALE 48 (格子の上端) が最良だったので、e16/e20 は 56 も測る。
+# pipeline.py の最良 (epoch, FV_SCALE) の選択はこの 2 本も待つ
+[[job]]
+name = "fv-full-e16@56-vs-s11@32-300k"
+a = "009-full/0016"
+a_fv = 56
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "FV_SCALE 調整 (学習ネット, 上端の外側)"
+
+[[job]]
+name = "fv-full-e20@56-vs-s11@32-300k"
+a = "009-full/0020"
+a_fv = 56
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "FV_SCALE 調整 (学習ネット, 上端の外側)"
