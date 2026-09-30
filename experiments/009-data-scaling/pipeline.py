@@ -400,17 +400,22 @@ def write_status(st: dict) -> None:
         print("\n".join(lines))
         return
     STATUS_MD.write_text("\n".join(lines) + "\n")
+    commit_push([STATUS_MD], f"exp: 009 pipeline — stage {st['stage']}")
+
+
+def commit_push(paths: list[Path], title: str) -> None:
+    """paths だけを commit して push する (対局キューの commit と競合したら再試行)。"""
     git = lambda *a: subprocess.run(["git", "-C", str(REPO), *a], capture_output=True, text=True)  # noqa: E731
     if git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip() != BRANCH:
         return
-    rel = str(STATUS_MD.relative_to(REPO))
+    rels = [str(p.relative_to(REPO)) for p in paths]
     msg = (
-        f"exp: 009 pipeline — stage {st['stage']}\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\n"
+        f"{title}\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\n"
         "Claude-Session: https://claude.ai/code/session_01YJdawcYFSvVniYuyJpM5c4\n"
     )
     for _ in range(5):
-        git("add", rel)
-        r = git("commit", "-m", msg, "--", rel)
+        git("add", "--", *rels)
+        r = git("commit", "-m", msg, "--", *rels)
         if r.returncode == 0 or "nothing to commit" in r.stdout + r.stderr:
             break
         time.sleep(10)
@@ -421,11 +426,35 @@ def write_status(st: dict) -> None:
         time.sleep(10)
 
 
+def refresh_results(st: dict) -> None:
+    """15 分ごとに図と notes/results.md を作り直し、変わっていれば push する。"""
+    if DRY or time.time() - st.get("last_plot", 0) < 900:
+        return
+    st["last_plot"] = time.time()
+    save_state(st)
+    r = subprocess.run(
+        [str(TRAIN_PY), str(HERE / "plot_results.py")], cwd=REPO, capture_output=True, text=True
+    )
+    if r.returncode != 0:
+        log(f"plot_results failed: {r.stderr.strip()[-300:]}")
+        return
+    note = HERE / "notes" / "results.md"
+    figs = sorted((HERE / "figures").glob("*.png"))
+    status = subprocess.run(
+        ["git", "-C", str(REPO), "status", "--porcelain", "--", str(note), str(HERE / "figures")],
+        capture_output=True, text=True,
+    ).stdout  # fmt: skip
+    if status.strip():
+        log("results changed; commit figures and results.md")
+        commit_push([note, *figs], "exp: 009 results — figures and results.md (auto)")
+
+
 # ---------------------------------------------------------------- main loop
 
 
 def step(st: dict) -> None:
     ensure_daemons()
+    refresh_results(st)
     stage = st["stage"]
 
     if stage == "full":
