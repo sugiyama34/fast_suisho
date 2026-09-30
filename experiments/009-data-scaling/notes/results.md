@@ -15,6 +15,7 @@ full と同じ棋譜になり、同じ開始局面どうしの差は対応のあ
 | 教師 | zero | 20 | -134.4 | [-160, -110] | -140.0 | 400 | 257 |
 | 教師 | zero | 30 | -130.4 | [-157, -105] | -140.0 | 400 | 238 |
 | 対局 | zero | 5 | -131.9 | [-158, -108] | -140.0 | 400 | 119 |
+| 対局 | zero | 10 | -138.0 | [-165, -113] | -140.0 | 400 | 180 |
 
 ![Training-dist. rank, zero](../figures/ablation_teach_zs.png)
 ![Match-dist. rank, zero](../figures/ablation_match_zs.png)
