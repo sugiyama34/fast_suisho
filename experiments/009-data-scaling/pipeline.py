@@ -8,10 +8,10 @@
   pick   : full の FV_SCALE 格子 (e5/e8 は 5 点、e12/e16/e20 は fv_decide.py が追加した 3 点) が揃うのを待ち、
            Elo 最大の (epoch, FV_SCALE) を「full の最良」とする (選択バイアスは許容: ユーザー決定)。
            最終アブレーション (教師順位・対局順位 × 下位 5/10/20/30% × zero/random, 各 1,000 ペア,
-           水匠 11@32 と対局, 親の FV_SCALE。親も同じ 1,000 ペアで対局) と、full 最良の 1M ノード確認、full-e10 の FV_SCALE 格子を追加
+           水匠 11@32 と対局, 親の FV_SCALE) と、基準 full の 2,000 ペアを追加
   final  : 上の対局が終わるのを待つ (GPU を使わない時間なので W=56)。loss_eval も流す
   armsA  : データ削減 arm p50/p10/p90/p70/p80 を GPU 0〜4 で E=10 (CPU は軽く: 対局しない)
-  armsB  : p60 / p30 / full-rot (複製 = ノイズ床) を GPU 0〜2 で E=10。並行して armsA の arm の対局 (W=22)。
+  armsB  : p60 / p30 を GPU 0〜1 で E=10。並行して armsA の arm の対局 (W=22)。
            終われば残りは W=56
   rate   : 全 arm の対局を待つ → loss_eval → done
 arm の対局: 候補 epoch を 300 ペアずつ水匠 11 と対局して最良 epoch を決め、その epoch を 2,000 ペア
@@ -56,9 +56,8 @@ BRANCH = "exp/009-data-scaling"
 FULL_EPOCHS = 20
 ARM_EPOCHS = 10
 ARMS_A = {"p50": "0", "p10": "1", "p90": "2", "p70": "3", "p80": "4"}  # arm -> GPU
-# 2 波目は GPU 3 枚 (電力の予算: GPU 3 枚 + CPU 32 コア)。p30 は 50%→90% 削減の間を埋める。
-# full-rot は full と同じデータを 016 始まりの順で学習した複製 = 学習の揺らぎ (ノイズ床) の見積もり
-ARMS_B = {"p60": "0", "p30": "1", "full-rot": "2"}
+# 2 波目: p60 と p30 (p30 は 50%→90% 削減の間を埋める)。GPU 2 枚 + 対局 (電力の予算内)
+ARMS_B = {"p60": "0", "p30": "1"}
 FRACTION = {
     "p90": 0.9,
     "p80": 0.8,
@@ -69,7 +68,7 @@ FRACTION = {
     "p10": 0.1,
     "full-rot": 1.0,
 }
-ARM_PAIRS = 2000  # arm-e10 と full-e10 の本命対局 (データ側は棋譜が全部変わるので対局数を増やす)
+ARM_PAIRS = 2000  # 基準 full と arm の本命対局 (データ側は棋譜が全部変わるので対局数を増やす)
 W_ARMS_B = 22  # 2 波目 (GPU 3 枚, 学習プロセスが計約 9 コア) と並行する対局の並列数
 GRID5 = (32, 40, 48, 56, 64)
 S11 = 'b = "suisho11"\nb_fv = 32'
@@ -335,24 +334,6 @@ def final_jobs(ep: int, fv: int) -> tuple[list[str], str]:
         "基準 full (アブレーション・データ削減の共通の基準)",
         a_fv=fv,
     )
-    name = f"final-full-e{ep}@{fv}-vs-s11@32-1M"
-    names.append(name)
-    text += job(
-        name, f'"009-full/{ep:04d}"', S11, 500, 7, 56, "full 最良の 1M ノード確認", a_fv=fv
-    ).replace("nodes = 300000", "nodes = 1000000")
-    # 補助: full-e10 (arm と同じ epoch)。full-rot-e10 との差 = 学習の揺らぎ (ノイズ床)、full との差 = epoch の効果
-    name = f"full-e10@{fv}-vs-s11@32-300k-{ARM_PAIRS}p"
-    names.append(name)
-    text += job(
-        name,
-        '"009-full/0010"',
-        S11,
-        ARM_PAIRS,
-        8,
-        56,
-        "補助: ノイズ床・epoch の効果の見積もり",
-        a_fv=fv,
-    )
     return names, text
 
 
@@ -579,7 +560,7 @@ def step(st: dict) -> None:
             advance(
                 st,
                 "armsB",
-                f"arm 5 本の学習が終了。p60/p30/full-rot を学習開始、並行して arm の対局 (W={W_ARMS_B})",
+                f"arm 5 本の学習が終了。p60/p30 を学習開始、並行して arm の対局 (W={W_ARMS_B})",
             )
 
     elif stage == "armsB":
@@ -593,9 +574,9 @@ def step(st: dict) -> None:
                 names += n
                 text += t
             st["arm_jobs"] = st["arm_jobs"] + names
-            append_jobs("# 10. pipeline.py が追加: arm p60/p30/full-rot の対局", text)
+            append_jobs("# 10. pipeline.py が追加: arm p60/p30 の対局", text)
             set_workers("arm-", 56)
-            advance(st, "rate", "2 波目 (p60/p30/full-rot) の学習が終了。残りの対局は W=56")
+            advance(st, "rate", "2 波目 (p60/p30) の学習が終了。残りの対局は W=56")
 
     elif stage == "rate":
         arms = list(ARMS_A) + list(ARMS_B)
