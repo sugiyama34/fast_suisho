@@ -43,44 +43,13 @@ pairs = 100
 priority = 20
 note = "パイプライン確認"
 
-# 3. full の途中 epoch vs 水匠 11
-[[job]]
-name = "full-e8-vs-s11-300k"
-a = "009-full/0008"
-b = "suisho11"
-nodes = 300000
-pairs = 1000
-priority = 30
-
-[[job]]
-name = "full-e12-vs-s11-300k"
-a = "009-full/0012"
-b = "suisho11"
-nodes = 300000
-pairs = 1000
-priority = 30
-
-[[job]]
-name = "full-e16-vs-s11-300k"
-a = "009-full/0016"
-b = "suisho11"
-nodes = 300000
-pairs = 1000
-priority = 30
-
-[[job]]
-name = "full-e20-vs-s11-300k"
-a = "009-full/0020"
-b = "suisho11"
-nodes = 300000
-pairs = 1000
-priority = 30
+# 3. (09-30 削除: FV_SCALE 16 固定の full-e8/12/16/20 vs 水匠 11。下の 6. に置き換え)
 
 # 4. 暫定アブレーション (2026-09-30 計画変更: full のアブレーションを最優先)。full-e12 を基準に zero-specific、
 #    教師の出現回数 (teach) と対局側の発火回数 (match) の 2 通りの順位で下位 5/10/20/30%。基準ネットと直接対局
 [[job]]
 name = "full-e12-zs-teach-f5-vs-full-e12-300k"
-a = { ablate = "full-e12-zs-teach-f5", ckpt = "009-full/0012", select = "--arm full --percent 5 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy"] }
+a = { ablate = "full-e12-zs-teach-f5", ckpt = "009-full/0012", select = "--arm full --percent 5 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", "/mnt/nvme1/sugiyama/fv/full.decided"] }
 b = "009-full/0012"
 nodes = 300000
 pairs = 400
@@ -89,7 +58,7 @@ note = "暫定 (e12 基準)"
 
 [[job]]
 name = "full-e12-zs-teach-f10-vs-full-e12-300k"
-a = { ablate = "full-e12-zs-teach-f10", ckpt = "009-full/0012", select = "--arm full --percent 10 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy"] }
+a = { ablate = "full-e12-zs-teach-f10", ckpt = "009-full/0012", select = "--arm full --percent 10 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", "/mnt/nvme1/sugiyama/fv/full.decided"] }
 b = "009-full/0012"
 nodes = 300000
 pairs = 400
@@ -98,7 +67,7 @@ note = "暫定 (e12 基準)"
 
 [[job]]
 name = "full-e12-zs-teach-f20-vs-full-e12-300k"
-a = { ablate = "full-e12-zs-teach-f20", ckpt = "009-full/0012", select = "--arm full --percent 20 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy"] }
+a = { ablate = "full-e12-zs-teach-f20", ckpt = "009-full/0012", select = "--arm full --percent 20 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", "/mnt/nvme1/sugiyama/fv/full.decided"] }
 b = "009-full/0012"
 nodes = 300000
 pairs = 400
@@ -107,7 +76,7 @@ note = "暫定 (e12 基準)"
 
 [[job]]
 name = "full-e12-zs-teach-f30-vs-full-e12-300k"
-a = { ablate = "full-e12-zs-teach-f30", ckpt = "009-full/0012", select = "--arm full --percent 30 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy"] }
+a = { ablate = "full-e12-zs-teach-f30", ckpt = "009-full/0012", select = "--arm full --percent 30 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", "/mnt/nvme1/sugiyama/fv/full.decided"] }
 b = "009-full/0012"
 nodes = 300000
 pairs = 400
@@ -116,7 +85,7 @@ note = "暫定 (e12 基準)"
 
 [[job]]
 name = "full-e12-zs-match-f5-vs-full-e12-300k"
-a = { ablate = "full-e12-zs-match-f5", ckpt = "009-full/0012", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 5 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy"] }
+a = { ablate = "full-e12-zs-match-f5", ckpt = "009-full/0012", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 5 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", "/mnt/nvme1/sugiyama/fv/full.decided"] }
 b = "009-full/0012"
 nodes = 300000
 pairs = 400
@@ -125,7 +94,7 @@ note = "暫定 (e12 基準)"
 
 [[job]]
 name = "full-e12-zs-match-f10-vs-full-e12-300k"
-a = { ablate = "full-e12-zs-match-f10", ckpt = "009-full/0012", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 10 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy"] }
+a = { ablate = "full-e12-zs-match-f10", ckpt = "009-full/0012", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 10 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", "/mnt/nvme1/sugiyama/fv/full.decided"] }
 b = "009-full/0012"
 nodes = 300000
 pairs = 400
@@ -134,7 +103,7 @@ note = "暫定 (e12 基準)"
 
 [[job]]
 name = "full-e12-zs-match-f20-vs-full-e12-300k"
-a = { ablate = "full-e12-zs-match-f20", ckpt = "009-full/0012", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 20 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy"] }
+a = { ablate = "full-e12-zs-match-f20", ckpt = "009-full/0012", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 20 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", "/mnt/nvme1/sugiyama/fv/full.decided"] }
 b = "009-full/0012"
 nodes = 300000
 pairs = 400
@@ -143,7 +112,7 @@ note = "暫定 (e12 基準)"
 
 [[job]]
 name = "full-e12-zs-match-f30-vs-full-e12-300k"
-a = { ablate = "full-e12-zs-match-f30", ckpt = "009-full/0012", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 30 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy"] }
+a = { ablate = "full-e12-zs-match-f30", ckpt = "009-full/0012", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 30 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", "/mnt/nvme1/sugiyama/fv/full.decided"] }
 b = "009-full/0012"
 nodes = 300000
 pairs = 400
@@ -202,4 +171,118 @@ nodes = 300000
 pairs = 400
 priority = 12
 note = "FV_SCALE 調整 (水匠 11 自己対局)"
+
+
+# 6. 学習ネットの FV_SCALE 調整 (相手は水匠 11 の最良値 FV_SCALE=32: 上の自己対局で +77 Elo が最大)。
+#    格子 32/40/48/56/64。full-e5 は空いた CPU で先行、full-e8 が本命。e12 以降は e8 の最良値 ± 8 の 3 点を後で追加。
+#    e12 のアブレーションは FV_SCALE 確定 (/mnt/nvme1/sugiyama/fv/full.decided) まで待つ
+[[job]]
+name = "fv-full-e5@48-vs-s11@32-300k"
+a = "009-full/0005"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 8
+note = "FV_SCALE 調整 (学習ネット)"
+
+[[job]]
+name = "fv-full-e5@40-vs-s11@32-300k"
+a = "009-full/0005"
+a_fv = 40
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 8
+note = "FV_SCALE 調整 (学習ネット)"
+
+[[job]]
+name = "fv-full-e5@56-vs-s11@32-300k"
+a = "009-full/0005"
+a_fv = 56
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 8
+note = "FV_SCALE 調整 (学習ネット)"
+
+[[job]]
+name = "fv-full-e5@32-vs-s11@32-300k"
+a = "009-full/0005"
+a_fv = 32
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 8
+note = "FV_SCALE 調整 (学習ネット)"
+
+[[job]]
+name = "fv-full-e5@64-vs-s11@32-300k"
+a = "009-full/0005"
+a_fv = 64
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 8
+note = "FV_SCALE 調整 (学習ネット)"
+
+[[job]]
+name = "fv-full-e8@48-vs-s11@32-300k"
+a = "009-full/0008"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "FV_SCALE 調整 (学習ネット)"
+
+[[job]]
+name = "fv-full-e8@40-vs-s11@32-300k"
+a = "009-full/0008"
+a_fv = 40
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "FV_SCALE 調整 (学習ネット)"
+
+[[job]]
+name = "fv-full-e8@56-vs-s11@32-300k"
+a = "009-full/0008"
+a_fv = 56
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "FV_SCALE 調整 (学習ネット)"
+
+[[job]]
+name = "fv-full-e8@32-vs-s11@32-300k"
+a = "009-full/0008"
+a_fv = 32
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "FV_SCALE 調整 (学習ネット)"
+
+[[job]]
+name = "fv-full-e8@64-vs-s11@32-300k"
+a = "009-full/0008"
+a_fv = 64
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "FV_SCALE 調整 (学習ネット)"
 
