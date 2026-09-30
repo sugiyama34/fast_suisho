@@ -17,6 +17,7 @@ full と同じ棋譜になり、同じ開始局面どうしの差は対応のあ
 | 対局 | zero | 5 | -131.9 | [-158, -108] | -140.0 | 400 | 119 |
 | 対局 | zero | 10 | -138.0 | [-165, -113] | -140.0 | 400 | 180 |
 | 対局 | zero | 20 | -102.8 | [-127, -79] | -140.0 | 400 | 243 |
+| 対局 | zero | 30 | -132.9 | [-160, -108] | -140.0 | 400 | 249 |
 
 ![Training-dist. rank, zero](../figures/ablation_teach_zs.png)
 ![Match-dist. rank, zero](../figures/ablation_match_zs.png)
