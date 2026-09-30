@@ -4,6 +4,6 @@
 **基準は常に full** (最良 epoch・最良 FV_SCALE)。対局は決定的なので、アブレーションで指し手が変わらない局は
 full と同じ棋譜になり、同じ開始局面どうしの差は対応のある比較になる。
 
-## 稀な特徴量のアブレーション (provisional: full-e12 @ FV_SCALE 0)
+## 稀な特徴量のアブレーション (provisional: full-e12 @ FV_SCALE 40)
 
 (まだ結果が無い)
