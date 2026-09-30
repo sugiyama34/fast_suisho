@@ -57,7 +57,8 @@ RATINGS_HEADER = """# 対局結果 (レーティング)
   ペア数に応じた等間隔ストライド (ペア数が同じなら全対局で同じ局面集合)。1 ペア = 先後入替 2 局
 - **Elo は A から見た値** (A = `match_nodes.py` の candidate, B = baseline)。95% CI は pentanomial
 - pentanomial は A のペア得点 0 / 0.5 / 1 / 1.5 / 2 の件数。勝/分/負は A から見た局数
-- **FV_SCALE は両陣営とも既定の 16** (`hypothesis.md` §6)。水匠 11 の適正値は約 40、sigmoid-MSE 系の
+- **FV_SCALE**: ジョブで `a_fv` / `b_fv` を指定したネットは表記に `@FV<値>` を付ける。無指定は既定の 16。
+  09-30 以降は評価関数ごとに対局で調整した値を使う (`notes/decisions.md`)。水匠 11 の適正値は約 40、sigmoid-MSE 系の
   学習ネットは約 52 と推定されており (`docs/TRAINING.md` 知見 3)、水匠 11 相手の絶対値には
   FV_SCALE のずれによる偏りが含まれうる。全 arm が同一レシピなので arm 間・epoch 間の比較には効かない
 - A / B の表記: `full-e8` = `009-full/0008` の checkpoint、`s11` = 水匠 11、それ以外は
@@ -220,6 +221,9 @@ def run_match(j: dict, a_dir: Path, b_dir: Path, workers: int) -> dict:
         "--pairs", str(j["pairs"]),
         "--workers", str(j.get("workers", workers)),
     ]  # fmt: skip
+    for side, flag in (("a_fv", "--candidate-fv-scale"), ("b_fv", "--baseline-fv-scale")):
+        if j.get(side) is not None:
+            cmd += [flag, str(j[side])]
     summary = GAMES / j["name"] / "summary.json"
     for attempt in (1, 2, 3):  # 失敗ペアがあれば再実行 (完結ペアは再利用される)
         log(f"match attempt {attempt}: " + shlex.join(cmd))
@@ -244,6 +248,12 @@ def git(*args: str) -> subprocess.CompletedProcess:
     return subprocess.run(["git", "-C", str(REPO), *args], capture_output=True, text=True)
 
 
+def fv_tag(j: dict, side: str) -> str:
+    """FV_SCALE を指定したネットは表記に @FV<値> を付ける (無指定 = 既定 16)。"""
+    v = j.get(f"{side}_fv")
+    return "" if v is None else f"@FV{v}"
+
+
 def append_rating(j: dict, s: dict, a_dir: Path, b_dir: Path) -> None:
     if not RATINGS.exists():
         RATINGS.write_text(RATINGS_HEADER)
@@ -263,8 +273,8 @@ def append_rating(j: dict, s: dict, a_dir: Path, b_dir: Path) -> None:
         if j.get("note"):
             notes.append(j["note"])
         row = (
-            f"| {time.strftime('%m-%d %H:%M')} | {j['name']} | {net_label(j['a'])} | "
-            f"{net_label(j['b'])} | {j['nodes']:,} | {s['pairs']:,} | "
+            f"| {time.strftime('%m-%d %H:%M')} | {j['name']} | {net_label(j['a'])}{fv_tag(j, 'a')} | "
+            f"{net_label(j['b'])}{fv_tag(j, 'b')} | {j['nodes']:,} | {s['pairs']:,} | "
             f"{s['elo']:+.1f} ± {half:.1f} [{lo_ci:+.1f}, {hi_ci:+.1f}] | "
             f"{'/'.join(map(str, s['pentanomial']))} | {w}/{d}/{lo} | {'; '.join(notes)} |\n"
         )
@@ -329,11 +339,19 @@ def main() -> None:
         "--settle", type=float, default=120, help="checkpoint が揃ったとみなす無更新秒数"
     )
     ap.add_argument("--once", action="store_true", help="実行できるジョブが無くなったら終了")
-    ap.add_argument("--test-dir", type=Path, help="テスト用: 棋譜・ratings.md・アブレーションをここに置き、commit しない")
+    ap.add_argument(
+        "--test-dir",
+        type=Path,
+        help="テスト用: 棋譜・ratings.md・アブレーションをここに置き、commit しない",
+    )
     args = ap.parse_args()
     global GAMES, RATINGS, ABLATED_ROOT, NO_COMMIT
     if args.test_dir:
-        GAMES, RATINGS, ABLATED_ROOT = args.test_dir / "games", args.test_dir / "ratings.md", args.test_dir / "ablated"
+        GAMES, RATINGS, ABLATED_ROOT = (
+            args.test_dir / "games",
+            args.test_dir / "ratings.md",
+            args.test_dir / "ablated",
+        )
         NO_COMMIT = True
 
     jobs: list[dict] = []

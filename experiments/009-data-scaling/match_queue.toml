@@ -150,3 +150,56 @@ pairs = 400
 priority = 25
 note = "暫定 (e12 基準)"
 
+
+# 5. FV_SCALE の調整 (2026-09-30 ユーザー決定)。水匠 11 は自己対局 (FV_SCALE=X 対 既定 16) で最良値を決める。
+#    学習ネットはその最良値の水匠 11 を相手に、FV_SCALE を振って決める (水匠 11 の結果が出てから追加)
+[[job]]
+name = "fv-s11@40-vs-s11@16-300k"
+a = "suisho11"
+a_fv = 40
+b = "suisho11"
+nodes = 300000
+pairs = 400
+priority = 5
+note = "FV_SCALE 調整 (水匠 11 自己対局)"
+
+[[job]]
+name = "fv-s11@24-vs-s11@16-300k"
+a = "suisho11"
+a_fv = 24
+b = "suisho11"
+nodes = 300000
+pairs = 400
+priority = 12
+note = "FV_SCALE 調整 (水匠 11 自己対局)"
+
+[[job]]
+name = "fv-s11@32-vs-s11@16-300k"
+a = "suisho11"
+a_fv = 32
+b = "suisho11"
+nodes = 300000
+pairs = 400
+priority = 12
+note = "FV_SCALE 調整 (水匠 11 自己対局)"
+
+[[job]]
+name = "fv-s11@48-vs-s11@16-300k"
+a = "suisho11"
+a_fv = 48
+b = "suisho11"
+nodes = 300000
+pairs = 400
+priority = 12
+note = "FV_SCALE 調整 (水匠 11 自己対局)"
+
+[[job]]
+name = "fv-s11@56-vs-s11@16-300k"
+a = "suisho11"
+a_fv = 56
+b = "suisho11"
+nodes = 300000
+pairs = 400
+priority = 12
+note = "FV_SCALE 調整 (水匠 11 自己対局)"
+

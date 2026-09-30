@@ -7,9 +7,8 @@
   ペア数に応じた等間隔ストライド (ペア数が同じなら全対局で同じ局面集合)。1 ペア = 先後入替 2 局
 - **Elo は A から見た値** (A = `match_nodes.py` の candidate, B = baseline)。95% CI は pentanomial
 - pentanomial は A のペア得点 0 / 0.5 / 1 / 1.5 / 2 の件数。勝/分/負は A から見た局数
-- **FV_SCALE は両陣営とも既定の 16** (`hypothesis.md` §6)。水匠 11 の適正値は約 40、sigmoid-MSE 系の
-  学習ネットは約 52 と推定されており (`docs/TRAINING.md` 知見 3)、水匠 11 相手の絶対値には
-  FV_SCALE のずれによる偏りが含まれうる。全 arm が同一レシピなので arm 間・epoch 間の比較には効かない
+- **FV_SCALE**: ジョブで `a_fv` / `b_fv` を指定したネットは表記に `@FV<値>` を付ける。無指定は既定の 16。
+  09-30 以降は評価関数ごとに対局で調整した値を使う (`notes/decisions.md`)。
 - A / B の表記: `full-e8` = `009-full/0008` の checkpoint、`s11` = 水匠 11、それ以外は
   アブレーションしたネット (`/mnt/nvme1/sugiyama/ablated/<名前>/nn.bin`、作り方は
   `nn.bin.json` と `rare.npy.json`)。sha256 は nn.bin の先頭 12 桁

@@ -44,6 +44,13 @@ class NodesEngine(UsiEngine):
     play_game は第 2 引数を movetime_ms として渡してくるが、ここではノード数として解釈する。
     """
 
+    def __init__(self, *args, fv_scale: int | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if fv_scale is not None:  # やねうら王は setoption の時点で FV_SCALE を反映する
+            self._send(f"setoption name FV_SCALE value {fv_scale}")
+            self._send("isready")
+            self._wait("readyok", timeout=120)
+
     def bestmove(self, position_cmd: str, nodes: int) -> tuple[str, int | None]:
         self._send(position_cmd)
         self._send(f"go nodes {nodes}")
@@ -77,6 +84,8 @@ def main() -> None:
     ap.add_argument(
         "--engine", default=str(Path.home() / "YaneuraOu" / "source" / "YaneuraOu-by-gcc")
     )
+    ap.add_argument("--candidate-fv-scale", type=int, help="省略時はエンジン既定 (16)")
+    ap.add_argument("--baseline-fv-scale", type=int, help="省略時はエンジン既定 (16)")
     ap.add_argument("--book", default=str(REPO / "data" / "books" / "start_sfens_ply24.txt"))
     ap.add_argument("--name", required=True)
     ap.add_argument("--games-dir", default=str(HERE / "games"))
@@ -115,6 +124,14 @@ def main() -> None:
                     fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
         os.replace(tmp, games_path)
 
+    if done and summary_path.exists():  # FV_SCALE を変えて同じ名前で再開すると結果が混ざる
+        prev = json.loads(summary_path.read_text())
+        for k in ("candidate_fv_scale", "baseline_fv_scale"):
+            if prev.get(k) != getattr(args, k):
+                raise SystemExit(
+                    f"{summary_path}: {k}={prev.get(k)} differs from --{k.replace('_', '-')}"
+                )
+
     sprt = PentanomialSprt()
     for recs in done.values():
         sprt.add_pair(sum(r["cand_score"] for r in recs))
@@ -129,6 +146,8 @@ def main() -> None:
     meta = {
         "candidate_evaldir": str(Path(args.candidate_evaldir).resolve()),
         "baseline_evaldir": args.baseline_evaldir,
+        "candidate_fv_scale": args.candidate_fv_scale,
+        "baseline_fv_scale": args.baseline_fv_scale,
         "engine": args.engine,
         "nodes": args.nodes,
         "threads_per_engine": 1,
@@ -138,15 +157,19 @@ def main() -> None:
     }
 
     def spawn(w: int) -> tuple[NodesEngine, NodesEngine]:
-        mk = lambda evaldir, tag: NodesEngine(  # noqa: E731
+        mk = lambda evaldir, fv, tag: NodesEngine(  # noqa: E731
             args.engine,
             evaldir,
             1,
             args.hash_mb,
             args.max_plies,
             stderr_path=out_dir / f"engine-{tag}-w{w}.stderr.log",
+            fv_scale=fv,
         )
-        return mk(args.candidate_evaldir, "cand"), mk(args.baseline_evaldir, "base")
+        return (
+            mk(args.candidate_evaldir, args.candidate_fv_scale, "cand"),
+            mk(args.baseline_evaldir, args.baseline_fv_scale, "base"),
+        )
 
     def worker(w: int) -> None:
         cand, base = spawn(w)
