@@ -6,7 +6,14 @@ full と同じ棋譜になり、同じ開始局面どうしの差は対応のあ
 
 ## 稀な特徴量のアブレーション (final: full-e16 @ FV_SCALE 48)
 
-(まだ結果が無い)
+![all settings](../figures/ablation_merged.png)
+
+| 順位 | モード | 下位 % | Elo vs 水匠 11 | 95% CI | 同じ局面での full-e16 | 局面数 | 棋譜が変わったペア |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 教師 | zero | 5 | -118.8 | [-138, -100] | -120.8 | 667 | 183 |
+
+![Training-dist. rank, zero](../figures/ablation_teach_zs.png)
+![Match-dist. rank, zero](../figures/ablation_match_zs.png)
 
 ## アブレーション X% ≈ データ削減 Y% (基準 full-e16)
 
@@ -15,6 +22,7 @@ Y はデータ側の曲線 (単調減少に当てはめ) で同じ低下にな�
 
 | 順位 | モード | アブレーション X | full-e16 からの差 (Elo) | 95% CI | 同等なデータ削減 Y | 95% 区間 |
 | --- | --- | --- | --- | --- | --- | --- |
+| 教師 | zero | 5% | +2.0 | [-15, +19] | – | – |
 
 | データ削減 arm | 最良 epoch | 削った割合 | full-e16 からの差 (Elo) | 95% CI |
 | --- | --- | --- | --- | --- |
