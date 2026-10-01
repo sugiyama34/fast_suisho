@@ -44,22 +44,10 @@ uv sync
 bash scripts/install-hooks.sh   # git の pre-commit hook を有効化
 ```
 
-- **git hook**: `scripts/install-hooks.sh` は `core.hooksPath=.githooks` を設定し、
-  commit 時に `.githooks/pre-commit` (秘密情報スキャナ) が動くようにする。新サーバーで
-  これを忘れてスキャナが無効のままになったことがあるため、Claude Code の SessionStart hook
-  (`.claude/hooks/check-git-hooks.sh`) が未設定を検出するとセッション開始時に警告する
-  (ブロックはしない)。Claude は `git config` を実行できない (`block-dangerous-git.sh` が
-  ブロックする) ので、警告が出たら**ユーザーが**上記スクリプトを実行する
-- **Python の lint**: CI (`.github/workflows/lint.yml`) は `uv run ruff check` と
-  `uv run ruff format --check` を走らせる。Claude Code の PostToolUse hook が 2 つある:
-  - `python-lint.sh` (Edit / Write): 編集した `.py` を ruff で自動修正する
-  - `python-lint-bash.sh` (Bash): Bash 経由 (heredoc, `sed -i`, 書き換えスクリプト) で
-    変更された `.py` を**検査のみ**する (ファイルは変更しない。複数ステップのスクリプト編集の
-    途中で整形すると壊れるため)。`git status` に出る変更済み・未追跡の `.py` のうち、
-    前回の検査以降に mtime が更新されたものだけを対象にするので、同じファイルを繰り返し
-    報告しない。問題があれば ruff の出力と修正コマンドを Claude に返す
-  - 同じ Bash 呼び出しの中で commit まで済ませた `.py` は `git status` に出ないため検出
-    できない。最終的な防衛線は CI
+- `install-hooks.sh` が未実行だと、Claude Code のセッション開始時に警告が出る
+  (`.claude/hooks/check-git-hooks.sh`)
+- Bash 経由で変更した `.py` は `.claude/hooks/python-lint-bash.sh` が ruff で検査する
+  (検査のみ。修正はしない)
 - **コミット署名**: 旧開発機では SSH 署名 (`gpg.format=ssh`, `commit.gpgsign=true`) を
   使っていた。新サーバーでも鍵を用意して設定する
 - **WandB**: API キーは `wandb login` ではなく環境変数で渡す運用 (`~/.netrc` への平文保存を
