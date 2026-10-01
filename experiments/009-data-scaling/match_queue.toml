@@ -391,6 +391,7 @@ b = "suisho11"
 b_fv = 32
 nodes = 300000
 pairs = 400
+workers = 56
 priority = 30
 note = "FV_SCALE 調整 (学習ネット, e8 の最良値 ± 8)"
 
@@ -402,6 +403,7 @@ b = "suisho11"
 b_fv = 32
 nodes = 300000
 pairs = 400
+workers = 56
 priority = 30
 note = "FV_SCALE 調整 (学習ネット, e8 の最良値 ± 8)"
 
@@ -427,5 +429,6 @@ b = "suisho11"
 b_fv = 32
 nodes = 300000
 pairs = 400
+workers = 56
 priority = 30
 note = "FV_SCALE 調整 (学習ネット, 上端の外側)"
