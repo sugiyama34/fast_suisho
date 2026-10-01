@@ -4,7 +4,7 @@
 対局し、Elo を full と比べる。
 
 アブレーション (図 5 枚):
-  x = アブレーションした特徴量の割合 (5/10/20/30%, 0% = full)、y = 水匠 11 に対する Elo
+  x = アブレーションした特徴量の割合 (5/10/20/30/50/75%, 0% = full)、y = 水匠 11 に対する Elo
   設定 4 通り = 順位 {教師 (training), 対局 (match)} × {zero, random}。設定ごとの 4 枚 + 重ねた 1 枚
   最終 (pipeline の state.json の full 最良) があればそれ、無ければ暫定 (full-e12, zero のみ)
 
@@ -38,7 +38,7 @@ FIG = HERE / "figures"
 NOTE = HERE / "notes" / "results.md"
 STATE = Path("/mnt/nvme1/sugiyama/pipeline/state.json")
 FV_FLAG = Path("/mnt/nvme1/sugiyama/fv/full.decided")
-PCTS = (5, 10, 20, 30)
+PCTS = (5, 10, 20, 30, 50, 75)
 DATA_ARMS = ("p90", "p80", "p70", "p60", "p50", "p30", "p10")  # 削ったデータ = 100 − 数字
 ARM_PAIRS = 2000
 N_BOOT = 2000

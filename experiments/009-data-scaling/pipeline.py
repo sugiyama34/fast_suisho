@@ -54,6 +54,7 @@ CUDA_HOME = ROOT / "cuda-12.8"
 BRANCH = "exp/009-data-scaling"
 
 FULL_EPOCHS = 20
+ABL_PCTS = (5, 10, 20, 30, 50, 75)  # 10-01 ユーザー: 30% まで効果がほぼ無いので 50/75% を追加
 ARM_EPOCHS = 10
 ARMS_A = {"p50": "0", "p10": "1", "p90": "2", "p70": "3", "p80": "4"}  # arm -> GPU
 # 2 波目: p60 と p30 (p30 は 50%→90% 削減の間を埋める)。GPU 2 枚 + 対局 (電力の予算内)
@@ -305,7 +306,7 @@ def final_jobs(ep: int, fv: int) -> tuple[list[str], str]:
     names, text = [], ""
     for mode, m, pr in (("zero-specific", "zs", 5), ("random-specific", "rs", 6)):
         for rank in ("teach", "match"):
-            for pct in (5, 10, 20, 30):
+            for pct in ABL_PCTS:
                 counts = "--arm full" if rank == "teach" else f"--counts {SEARCH}"
                 sel = f"{counts} --percent {pct} --by features --report-counts {SEARCH}"
                 abl = f"full-e{ep}-{m}-{rank}-f{pct}"
