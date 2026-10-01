@@ -44,6 +44,10 @@ uv sync
 bash scripts/install-hooks.sh   # git の pre-commit hook を有効化
 ```
 
+- `install-hooks.sh` が未実行だと、Claude Code のセッション開始時に警告が出る
+  (`.claude/hooks/check-git-hooks.sh`)
+- Bash 経由で変更した `.py` は `.claude/hooks/python-lint-bash.sh` が ruff で検査する
+  (検査のみ。修正はしない)
 - **コミット署名**: 旧開発機では SSH 署名 (`gpg.format=ssh`, `commit.gpgsign=true`) を
   使っていた。新サーバーでも鍵を用意して設定する
 - **WandB**: API キーは `wandb login` ではなく環境変数で渡す運用 (`~/.netrc` への平文保存を
