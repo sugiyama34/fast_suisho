@@ -62,7 +62,8 @@ def structural_impossible() -> np.ndarray:
     m = np.zeros(N_KB * PIECE_INPUTS, dtype=bool)
     for kb in range(N_KB):
         o = kb * PIECE_INPUTS
-        m[o : o + 90] = True  # 持ち駒領域: 使われる枚数スロット以外 (bp=0 と各駒種の予備スロット) は空き
+        # 持ち駒領域: 使われる枚数スロット以外 (bp=0 と各駒種の予備スロット) は空き
+        m[o : o + 90] = True
         for base, n, _, _ in HAND_PLANES:
             m[o + base : o + base + n] = False
         for base, name, friend in BOARD_PLANES:

@@ -101,7 +101,8 @@ def strata(meta) -> dict[str, list[tuple[str, np.ndarray]]]:
     """層の定義: {層別の名前: [(ラベル, bool マスク), ...]}"""
     out = {"by_rarest_log10": [], "by_n_lt_1e4": []}
     thr = np.array([10**k for k in range(1, 10)], dtype=np.uint64)
-    lg = np.searchsorted(thr, meta["min_count"].astype(np.uint64), side="right")  # floor(log10), 整数比較
+    # floor(log10), 整数比較
+    lg = np.searchsorted(thr, meta["min_count"].astype(np.uint64), side="right")
     for k in LOG10_BINS:
         out["by_rarest_log10"].append((f"[1e{k},1e{k + 1})", lg == k))
     nl = meta["n_lt_1e4"].astype(np.int64)
@@ -140,7 +141,11 @@ def eval_set(net: Path, name: str, out_dir: Path, args) -> dict:
 
 
 def default_sets(samples_dir: Path) -> list[str]:
-    return [n for n in ("A_s1", "B_s0", "C_s1_rare", "D_s0_rare") if (samples_dir / f"{n}.meta.npz").exists()]
+    return [
+        n
+        for n in ("A_s1", "B_s0", "C_s1_rare", "D_s0_rare")
+        if (samples_dir / f"{n}.meta.npz").exists()
+    ]
 
 
 def run(args) -> None:
@@ -192,7 +197,12 @@ def diff(a_dir: Path, b_dir: Path, args) -> None:
 
         def row(m: np.ndarray) -> dict:
             e = summarize(d[m], d[m], w[m])
-            return {"n": e["n"], "dloss": e["loss"], "dloss_se": e["loss_se"], "n_changed_output": int(changed[m].sum())}
+            return {
+                "n": e["n"],
+                "dloss": e["loss"],
+                "dloss_se": e["loss_se"],
+                "n_changed_output": int(changed[m].sum()),
+            }
 
         s = {"overall": row(used)}
         for key, groups in strata(meta).items():
@@ -211,7 +221,9 @@ def main() -> None:
         "--diff", type=Path, nargs=2, metavar=("A_DIR", "B_DIR"), help="2 つの出力の対応のある差"
     )
     ap.add_argument("--label", help="出力ディレクトリ名 (既定: checkpoint なら <run>-<NNNN>)")
-    ap.add_argument("--sets", help="カンマ区切り (既定: samples-dir にある A_s1,B_s0,C_s1_rare,D_s0_rare)")
+    ap.add_argument(
+        "--sets", help="カンマ区切り (既定: samples-dir にある A_s1,B_s0,C_s1_rare,D_s0_rare)"
+    )
     ap.add_argument("--out", type=Path, help="--diff の結果を書く JSON")
     ap.add_argument("--samples-dir", type=Path, default=SAMPLES)
     ap.add_argument("--out-root", type=Path, default=OUT_ROOT)

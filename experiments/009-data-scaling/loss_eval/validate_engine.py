@@ -101,7 +101,9 @@ def main() -> None:
 
     ok = True
     for fv in (1, 16):
-        eng = np.array(engine_evals(args.engine, args.net.resolve().parent, sfens, fv), dtype=np.int64)
+        eng = np.array(
+            engine_evals(args.engine, args.net.resolve().parent, sfens, fv), dtype=np.int64
+        )
         exp = np.clip(trunc_div(raw, fv), -VALUE_MAX_EVAL, VALUE_MAX_EVAL)
         bad = np.flatnonzero(eng != exp)
         clipped = int((np.abs(trunc_div(raw, fv)) > VALUE_MAX_EVAL).sum())

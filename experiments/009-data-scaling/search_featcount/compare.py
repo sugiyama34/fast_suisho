@@ -59,8 +59,10 @@ def main() -> None:
     print(f"teacher files={len(files)} sum={int(teacher.sum()):,}")
     print(f"search sum={int(search.sum()):,} (evaluations={int(search.sum()) // 80:,})")
     print(f"played sum={int(played.sum()):,} (positions={int(played.sum()) // 80:,})")
-    print(f"structurally-impossible features with count>0: search={int((search[imp] > 0).sum())} "
-          f"played={int((played[imp] > 0).sum())}")
+    print(
+        f"structurally-impossible features with count>0: search={int((search[imp] > 0).sum())} "
+        f"played={int((played[imp] > 0).sum())}"
+    )
 
     ps, pp, pt = norm(search), norm(played), norm(teacher)
     print(f"TV(search, teacher)={tv(ps, pt):.4f}  JS={js(ps, pt):.4f} bit")
@@ -71,17 +73,23 @@ def main() -> None:
     print(f"features seen in search: {int(seen.sum()):,}; in played: {int((played > 0).sum()):,}")
     for thr in (1, 10, 100, 1000, 10000):
         m = seen & (teacher < thr)
-        print(f"  seen in search & teacher < {thr:>5}: {int(m.sum()):>6,} features, "
-              f"search mass {ps[m].sum():.2e}")
+        print(
+            f"  seen in search & teacher < {thr:>5}: {int(m.sum()):>6,} features, "
+            f"search mass {ps[m].sum():.2e}"
+        )
 
     print(f"top {args.top} in search (share search / teacher / played):")
     for i in np.argsort(search, kind="stable")[::-1][: args.top]:
         print(f"  {i:6d} {decode(int(i))}: {ps[i]:.4%} / {pt[i]:.4%} / {pp[i]:.4%}")
     ratio = np.where(teacher > 0, ps / np.maximum(pt, 1e-300), np.inf)
-    print(f"top {args.top} over-represented in search vs teacher (search share / teacher share, teacher count):")
+    print(
+        f"top {args.top} over-represented in search vs teacher (search share / teacher share, teacher count):"
+    )
     cand = np.where(search >= 1000)[0]
     for i in cand[np.argsort(-ratio[cand])][: args.top]:
-        print(f"  {i:6d} {decode(int(i))}: x{ratio[i]:.1f}  ({ps[i]:.2e} / {pt[i]:.2e}, n_teacher={int(teacher[i]):,})")
+        print(
+            f"  {i:6d} {decode(int(i))}: x{ratio[i]:.1f}  ({ps[i]:.2e} / {pt[i]:.2e}, n_teacher={int(teacher[i]):,})"
+        )
 
 
 if __name__ == "__main__":

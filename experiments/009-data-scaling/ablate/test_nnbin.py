@@ -19,7 +19,8 @@ import nnbin  # noqa: E402
 
 def ref_quantise_i16(v: float) -> int:  # sfnn_quantise_i16: f64 round() は 0.5 を 0 から遠い側へ
     x = float(np.float32(v)) * 127.0
-    r = int(Decimal(x).quantize(Decimal(1), rounding=ROUND_HALF_UP))  # Decimal(float) は厳密, HALF_UP = 0 から遠い側
+    # Decimal(float) は厳密, HALF_UP = 0 から遠い側
+    r = int(Decimal(x).quantize(Decimal(1), rounding=ROUND_HALF_UP))
     return int(min(max(r, -32768), 32767))
 
 
