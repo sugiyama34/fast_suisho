@@ -54,6 +54,7 @@ CUDA_HOME = ROOT / "cuda-12.8"
 BRANCH = "exp/009-data-scaling"
 
 FULL_EPOCHS = 20
+ABL_PAIRS = 667  # 10-01: 1,000 → 667 (開始局面は full の 2,000 ペアの部分集合のまま。締切のため)
 ABL_PCTS = (5, 10, 20, 30, 50, 75)  # 10-01 ユーザー: 30% まで効果がほぼ無いので 50/75% を追加
 ARM_EPOCHS = 10
 ARMS_A = {"p50": "0", "p10": "1", "p90": "2", "p70": "3", "p80": "4"}  # arm -> GPU
@@ -317,7 +318,7 @@ def final_jobs(ep: int, fv: int) -> tuple[list[str], str]:
                     name,
                     a,
                     S11,
-                    1000,
+                    ABL_PAIRS,
                     pr,
                     56,
                     "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)",

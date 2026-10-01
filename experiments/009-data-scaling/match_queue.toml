@@ -432,3 +432,307 @@ pairs = 400
 workers = 56
 priority = 30
 note = "FV_SCALE 調整 (学習ネット, 上端の外側)"
+
+# 10-01 Claude: アブレーション 24 本は 667 ペアに変更 (開始局面のストライド 45 = 15 の倍数なので full の 2,000 ペアの部分集合。
+#   W=56 の実測 1,650〜1,900 ペア/時では 1,000 ペアだと締切の余裕が無いため)
+# 8. pipeline.py が追加: full 最良 e16 @ FV_SCALE 48 の最終アブレーション等
+[[job]]
+name = "final-full-e16-zs-teach-f5@48-vs-s11@32-300k"
+a = { ablate = "full-e16-zs-teach-f5", ckpt = "009-full/0016", select = "--arm full --percent 5 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 5
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-zs-teach-f10@48-vs-s11@32-300k"
+a = { ablate = "full-e16-zs-teach-f10", ckpt = "009-full/0016", select = "--arm full --percent 10 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 5
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-zs-teach-f20@48-vs-s11@32-300k"
+a = { ablate = "full-e16-zs-teach-f20", ckpt = "009-full/0016", select = "--arm full --percent 20 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 5
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-zs-teach-f30@48-vs-s11@32-300k"
+a = { ablate = "full-e16-zs-teach-f30", ckpt = "009-full/0016", select = "--arm full --percent 30 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 5
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-zs-teach-f50@48-vs-s11@32-300k"
+a = { ablate = "full-e16-zs-teach-f50", ckpt = "009-full/0016", select = "--arm full --percent 50 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 5
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-zs-teach-f75@48-vs-s11@32-300k"
+a = { ablate = "full-e16-zs-teach-f75", ckpt = "009-full/0016", select = "--arm full --percent 75 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 5
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-zs-match-f5@48-vs-s11@32-300k"
+a = { ablate = "full-e16-zs-match-f5", ckpt = "009-full/0016", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 5 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 5
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-zs-match-f10@48-vs-s11@32-300k"
+a = { ablate = "full-e16-zs-match-f10", ckpt = "009-full/0016", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 10 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 5
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-zs-match-f20@48-vs-s11@32-300k"
+a = { ablate = "full-e16-zs-match-f20", ckpt = "009-full/0016", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 20 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 5
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-zs-match-f30@48-vs-s11@32-300k"
+a = { ablate = "full-e16-zs-match-f30", ckpt = "009-full/0016", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 30 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 5
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-zs-match-f50@48-vs-s11@32-300k"
+a = { ablate = "full-e16-zs-match-f50", ckpt = "009-full/0016", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 50 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 5
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-zs-match-f75@48-vs-s11@32-300k"
+a = { ablate = "full-e16-zs-match-f75", ckpt = "009-full/0016", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 75 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 5
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-rs-teach-f5@48-vs-s11@32-300k"
+a = { ablate = "full-e16-rs-teach-f5", ckpt = "009-full/0016", select = "--arm full --percent 5 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "random-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 6
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-rs-teach-f10@48-vs-s11@32-300k"
+a = { ablate = "full-e16-rs-teach-f10", ckpt = "009-full/0016", select = "--arm full --percent 10 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "random-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 6
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-rs-teach-f20@48-vs-s11@32-300k"
+a = { ablate = "full-e16-rs-teach-f20", ckpt = "009-full/0016", select = "--arm full --percent 20 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "random-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 6
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-rs-teach-f30@48-vs-s11@32-300k"
+a = { ablate = "full-e16-rs-teach-f30", ckpt = "009-full/0016", select = "--arm full --percent 30 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "random-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 6
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-rs-teach-f50@48-vs-s11@32-300k"
+a = { ablate = "full-e16-rs-teach-f50", ckpt = "009-full/0016", select = "--arm full --percent 50 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "random-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 6
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-rs-teach-f75@48-vs-s11@32-300k"
+a = { ablate = "full-e16-rs-teach-f75", ckpt = "009-full/0016", select = "--arm full --percent 75 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "random-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 6
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-rs-match-f5@48-vs-s11@32-300k"
+a = { ablate = "full-e16-rs-match-f5", ckpt = "009-full/0016", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 5 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "random-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 6
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-rs-match-f10@48-vs-s11@32-300k"
+a = { ablate = "full-e16-rs-match-f10", ckpt = "009-full/0016", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 10 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "random-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 6
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-rs-match-f20@48-vs-s11@32-300k"
+a = { ablate = "full-e16-rs-match-f20", ckpt = "009-full/0016", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 20 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "random-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 6
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-rs-match-f30@48-vs-s11@32-300k"
+a = { ablate = "full-e16-rs-match-f30", ckpt = "009-full/0016", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 30 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "random-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 6
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-rs-match-f50@48-vs-s11@32-300k"
+a = { ablate = "full-e16-rs-match-f50", ckpt = "009-full/0016", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 50 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "random-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 6
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-rs-match-f75@48-vs-s11@32-300k"
+a = { ablate = "full-e16-rs-match-f75", ckpt = "009-full/0016", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 75 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "random-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 6
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16@48-vs-s11@32-300k-2000p"
+a = "009-full/0016"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 2000
+priority = 4
+workers = 56
+note = "基準 full (アブレーション・データ削減の共通の基準)"
+
