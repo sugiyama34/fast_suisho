@@ -5,6 +5,16 @@
     "WANDB_SILENT": "true"
   },
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/check-git-hooks.sh"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Edit|Write",
@@ -12,6 +22,15 @@
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/python-lint.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/python-lint-bash.sh"
           }
         ]
       }
@@ -68,12 +87,14 @@
         "./.claude/hooks/block-add-all.sh",
         "./.claude/hooks/block-dangerous-git.sh",
         "./.claude/hooks/block-no-verify.sh",
+        "./.claude/hooks/check-git-hooks.sh",
         "./.claude/hooks/command-allowlist.sh",
         "./.claude/hooks/lib/shell-parse.sh",
         "./.claude/hooks/log-tool-call.sh",
         "./.claude/hooks/log-permission-denied.sh",
         "./.claude/hooks/prevent-secret-commit.sh",
         "./.claude/hooks/python-lint.sh",
+        "./.claude/hooks/python-lint-bash.sh",
         "./.claude/hooks/wandb-guard.sh",
         "./.githooks/pre-commit",
         "./.github/workflows/claude-code-review.yml",
@@ -91,7 +112,11 @@
         "./tests/hooks/pre_commit.bats",
         "./tests/hooks/prevent_secret_commit.bats",
         "./tests/hooks/python_lint.bats",
-        "./tests/hooks/settings_allowlist_sync.bats"
+        "./tests/hooks/settings_allowlist_sync.bats",
+        "./tests/hooks/conftest.py",
+        "./tests/hooks/helpers.py",
+        "./tests/hooks/test_check_git_hooks.py",
+        "./tests/hooks/test_python_lint_bash.py"
       ],
       "denyRead": [
         "~/.aws",
