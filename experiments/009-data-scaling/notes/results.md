@@ -28,10 +28,12 @@ full と同じ棋譜になり、同じ開始局面どうしの差は対応のあ
 | 対局 | zero | 30 | -127.6 | [-148, -108] | -120.8 | 667 | 391 |
 | 対局 | zero | 50 | -133.3 | [-153, -114] | -120.8 | 667 | 403 |
 | 対局 | zero | 75 | -220.6 | [-243, -200] | -120.8 | 667 | 407 |
+| 対局 | random | 5 | -108.6 | [-128, -90] | -120.8 | 667 | 187 |
 
 ![Training-dist. rank, zero](../figures/ablation_teach_zs.png)
 ![Training-dist. rank, random](../figures/ablation_teach_rs.png)
 ![Match-dist. rank, zero](../figures/ablation_match_zs.png)
+![Match-dist. rank, random](../figures/ablation_match_rs.png)
 
 ## アブレーション X% ≈ データ削減 Y% (基準 full-e16)
 
@@ -58,6 +60,7 @@ Y はデータ側の曲線 (単調減少に当てはめ) で同じ低下にな�
 | 対局 | zero | 30% | -6.8 | [-34, +21] | – | – |
 | 対局 | zero | 50% | -12.5 | [-40, +16] | – | – |
 | 対局 | zero | 75% | -99.8 | [-129, -72] | – | – |
+| 対局 | random | 5% | +12.2 | [-4, +28] | – | – |
 
 | データ削減 arm | 最良 epoch | 削った割合 | full-e16 からの差 (Elo) | 95% CI |
 | --- | --- | --- | --- | --- |
