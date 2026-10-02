@@ -1,0 +1,14 @@
+engine A      : /home/sugiyama/engines/baseline-000/YaneuraOu-by-gcc (312b1368348e83fe…)
+engine B      : /home/sugiyama/engines/finny-008/YaneuraOu-by-gcc-B (4881fcf42afd6aef…)
+eval          : /home/sugiyama/suisho11/nn.bin (a78b7f889843037d…)
+conditions    : 16 thread(s), movetime 10000ms x 4 positions, hash 1024MB, 3 pairs (interleaved)
+cpu           : AMD EPYC 7302 16-Core Processor
+governor      : schedutil / boost: 1
+loadavg(pre)  : 46.91 45.75 30.95
+
+pair   nps_base     nps_finny    delta_pct
+1      4199208      5752803      +36.997%
+2      4208543      5749340      +36.611%
+3      4192094      5714499      +36.316%
+
+loadavg(post) : 67.34 59.01 40.07

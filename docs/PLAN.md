@@ -50,15 +50,17 @@
      TLB 挙動 (Zen 2 と Zen 5 で大きく異なる) もマシン固有であり、開発機で計測しても
      本番に持ち越せないため。c8a ベースラインセッション (AVX-512 edition ビルド +
      スレッドスケーリング曲線 + プロファイル取得) の際に合わせて評価する
-1. 🔜 **AccumulatorCache (finny tables) の移植** — experiment-002 の実測を受け 2026-07-14 に追加・昇格
+1. ✅ **AccumulatorCache (finny tables) の移植** → **完了 (2026-07-31,
+   `experiments/008-finny-tables/`)**。等価変換 (決定的探索 500 局面の searchlog
+   完全一致)。NPS (アイドル環境確定値, 2026-08-02): 1T **+37.2〜40.3%**
+   (finny 単体 +26.0〜29.0%、update 経路の accumulator 値渡しコピー除去で
+   +9.6〜12.6% 上乗せ)、16T **+35.5〜37.1%** (7.15M → 9.77M)。c8a では別途再計測。
+   パッチは `experiments/008-finny-tables/finny.patch`、バイナリは `~/engines/finny-008/`
    - FT refresh が全サイクルの 30.1% と最大費目 (差分更新の 3.4 倍)。HalfKA 系は
      玉移動のたびに視点丸ごと再計算するため、玉が動く中盤で refresh が支配的になる
-   - 玉マス等のバケットごとに accumulator をキャッシュし、refresh を「キャッシュ済み
-     accumulator との差分適用」に置き換える。**精度損ゼロの等価変換**なので、
-     フェーズ3 は軽量プロトコル (NPS + 評価値完全一致) で足りる
-   - Stockfish に AccumulatorCaches (通称 finny tables, 2024 導入) として実績あり。
-     エンジン改造 (中)。refresh 全消しの理論上限は +43% NPS で、実効でも 2 桁 % を狙う。
-     着手時に SF の該当実装を精査して設計を決める
+   - 玉マスごとに accumulator をキャッシュし、refresh を「キャッシュ済み
+     accumulator との差分適用」に置き換えた。**精度損ゼロの等価変換**なので、
+     フェーズ3 は軽量プロトコル (NPS + 評価値完全一致) で完了
 2. ⬜ **Feature Transformer 幅の構造的縮小** (1024 → 768 / 512)
    - 評価コストの大半は FT。出力チャネルを L1 ノルム等で重要度順に選抜して削る
    - 削るだけでは精度が落ちるため、蒸留 (元ネットワークの出力を教師に fine-tune) が前提

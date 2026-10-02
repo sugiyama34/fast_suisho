@@ -1,0 +1,246 @@
+diff --git a/source/eval/nnue/evaluate_nnue.cpp b/source/eval/nnue/evaluate_nnue.cpp
+index ee97c94a..eb31b2ae 100644
+--- a/source/eval/nnue/evaluate_nnue.cpp
++++ b/source/eval/nnue/evaluate_nnue.cpp
+@@ -227,6 +227,9 @@ namespace {
+ 		// 共有メモリに配置（同一ハッシュの共有メモリが既に存在すればそちらを参照）
+ 		shared_networks = SystemWideSharedConstant<NnueNetworks>(*tmp);
+ 
++		// パラメータが変わったのでAccumulatorCacheの全エントリを無効化する
++		network_generation.fetch_add(1, std::memory_order_relaxed);
++
+ 		return Tools::ResultCode::Ok;
+ 	}
+ 
+diff --git a/source/eval/nnue/features/half_ka2.cpp b/source/eval/nnue/features/half_ka2.cpp
+index 02c5cf65..8e313bb9 100644
+--- a/source/eval/nnue/features/half_ka2.cpp
++++ b/source/eval/nnue/features/half_ka2.cpp
+@@ -10,13 +10,6 @@
+ namespace YaneuraOu {
+ namespace Eval::NNUE::Features {
+ 
+-	// 玉の位置とBonaPieceから特徴量のインデックスを求める
+-	template <Side AssociatedKing>
+-	inline IndexType HalfKA2<AssociatedKing>::MakeIndex(Square sq_k, BonaPiece p) {
+-		// 後手玉は自玉と同じPLANEに持っていく
+-		return static_cast<IndexType>(e_king) * static_cast<IndexType>(sq_k) + static_cast<IndexType>(p >= e_king ? p - SQ_NB : p);
+-	}
+-
+ 	// 駒の情報を取得する
+ 	template <Side AssociatedKing>
+ 	inline void HalfKA2<AssociatedKing>::GetPieces(
+diff --git a/source/eval/nnue/features/half_ka2.h b/source/eval/nnue/features/half_ka2.h
+index 10b19f63..9d681904 100644
+--- a/source/eval/nnue/features/half_ka2.h
++++ b/source/eval/nnue/features/half_ka2.h
+@@ -42,7 +42,11 @@ namespace Eval::NNUE::Features {
+ 			IndexList* removed, IndexList* added);
+ 
+ 		// 玉の位置とBonaPieceから特徴量のインデックスを求める
+-		static IndexType MakeIndex(Square sq_k, BonaPiece p);
++		// (AccumulatorCacheからも呼ぶため、ヘッダで定義しておく)
++		static IndexType MakeIndex(Square sq_k, BonaPiece p) {
++			// 後手玉は自玉と同じPLANEに持っていく
++			return static_cast<IndexType>(e_king) * static_cast<IndexType>(sq_k) + static_cast<IndexType>(p >= e_king ? p - SQ_NB : p);
++		}
+ 
+ 	private:
+ 		// 駒の情報を取得する
+diff --git a/source/eval/nnue/nnue_accumulator.h b/source/eval/nnue/nnue_accumulator.h
+index 94b4b1f2..461a55a5 100644
+--- a/source/eval/nnue/nnue_accumulator.h
++++ b/source/eval/nnue/nnue_accumulator.h
+@@ -9,6 +9,8 @@
+ 
+ #include "nnue_architecture.h"
+ 
++#include <atomic>
++
+ namespace YaneuraOu {
+ namespace Eval::NNUE {
+ 
+@@ -23,6 +25,29 @@ struct alignas(64) Accumulator {
+   bool computed_score = false;
+ };
+ 
++// AccumulatorCache (Stockfishの通称finny tables)
++// 視点から見た自玉のマスごとに accumulator と、その accumulator を構成した
++// 駒リスト (BonaPiece) を保持する。refresh 時はゼロから全計算する代わりに、
++// キャッシュ済み accumulator との差分 (エントリ保存時から動いた駒だけ) を適用する。
++// エントリの不変条件: accumulation == biases + Σ column(MakeIndex(sq_k, pieces[i]))
++// これは駒割り当て (PieceNumber) の同一性に依存しないので、別のゲーム・別の探索木の
++// エントリもそのまま差分の基点として正しい。
++struct alignas(64) AccumulatorCacheEntry {
++  std::int16_t accumulation[kTransformedFeatureDimensions];
++  BonaPiece pieces[PIECE_NUMBER_NB];
++  bool computed = false;
++};
++
++struct AccumulatorCache {
++  AccumulatorCacheEntry entries[2][SQ_NB];  // [視点][視点から見た自玉のマス]
++  std::uint32_t generation = 0;  // network_generation と不一致なら全エントリ無効
++};
++
++// 評価関数パラメータが読み直されたときにキャッシュを無効化するための世代カウンタ。
++// スレッドローカルなキャッシュの generation との不一致で無効化を検出する。
++inline std::atomic<std::uint32_t> network_generation{1};
++inline thread_local AccumulatorCache accumulator_cache;
++
+ } // namespace Eval::NNUE
+ } // namespace YaneuraOu
+ 
+diff --git a/source/eval/nnue/nnue_feature_transformer.h b/source/eval/nnue/nnue_feature_transformer.h
+index 20e165b4..e43990f7 100644
+--- a/source/eval/nnue/nnue_feature_transformer.h
++++ b/source/eval/nnue/nnue_feature_transformer.h
+@@ -14,10 +14,13 @@
+ 
+ #include "nnue_common.h"
+ #include "nnue_architecture.h"
++#include "nnue_accumulator.h"
+ #include "features/index_list.h"
++#include "features/half_ka2.h"
+ 
+ #include <algorithm>  // std::clamp
+ #include <cstring>  // std::memset()
++#include <type_traits>  // std::is_same_v
+ 
+ namespace YaneuraOu {
+ namespace Eval::NNUE {
+@@ -492,10 +495,102 @@ class FeatureTransformer {
+ 			b[i] = read ? b[i] * 2 : b[i] / 2;
+ 	}
+ 
++	// AccumulatorCache (finny tables) を使うかどうか。
++	// キャッシュの実装は HalfKA2(Friend) 単独の特徴量セット (refresh trigger 1個 =
++	// kFriendKingMoved) を前提としているので、それ以外の特徴量セットでは従来コードを使う。
++	static constexpr bool kUseAccumulatorCache =
++		std::is_same_v<RawFeatures,
++			Features::FeatureSet<Features::HalfKA2<Features::Side::kFriend>>>;
++
++	// 1視点分の accumulator を AccumulatorCache 経由で全計算する。
++	// キャッシュエントリを現局面の駒リストとの差分で最新化し、
++	// その内容を pos の accumulator にコピーする。結果はゼロから全計算した場合と
++	// ビット単位で一致する (int16の加算は順序に依らないため)。
++	void refresh_perspective_with_cache(const Position& pos, Color perspective) const {
++		static_assert(kRefreshTriggers.size() == 1, "AccumulatorCache assumes a single refresh trigger");
++		using FeatureType = Features::HalfKA2<Features::Side::kFriend>;
++
++		auto& cache = accumulator_cache;
++		const std::uint32_t generation = network_generation.load(std::memory_order_relaxed);
++		if (cache.generation != generation) {
++			// 評価関数パラメータが読み直された。全エントリを無効化する。
++			for (auto& row : cache.entries)
++				for (auto& entry : row)
++					entry.computed = false;
++			cache.generation = generation;
++		}
++
++		// Features::HalfKA2<kFriend>::GetPieces()と同じ手順で駒リストと自玉のマスを得る
++		const BonaPiece* pieces = (perspective == BLACK) ?
++			pos.eval_list()->piece_list_fb() :
++			pos.eval_list()->piece_list_fw();
++		const PieceNumber target = static_cast<PieceNumber>(PIECE_NUMBER_KING + perspective);
++		const Square sq_k = static_cast<Square>((pieces[target] - f_king) % SQ_NB);
++
++		auto& entry = cache.entries[perspective][sq_k];
++
++#if defined(VECTOR)
++		constexpr IndexType kNumChunks = kHalfDimensions / (sizeof(vec_t) / sizeof(BiasType));
++		auto accumulation = reinterpret_cast<vec_t*>(&entry.accumulation[0]);
++		auto add_column = [&](IndexType index) {
++			auto column = reinterpret_cast<const vec_t*>(&weights_[kHalfDimensions * index]);
++			for (IndexType j = 0; j < kNumChunks; ++j)
++				accumulation[j] = vec_add_16(accumulation[j], column[j]);
++		};
++		auto sub_column = [&](IndexType index) {
++			auto column = reinterpret_cast<const vec_t*>(&weights_[kHalfDimensions * index]);
++			for (IndexType j = 0; j < kNumChunks; ++j)
++				accumulation[j] = vec_sub_16(accumulation[j], column[j]);
++		};
++#else
++		auto add_column = [&](IndexType index) {
++			const IndexType offset = kHalfDimensions * index;
++			for (IndexType j = 0; j < kHalfDimensions; ++j)
++				entry.accumulation[j] += weights_[offset + j];
++		};
++		auto sub_column = [&](IndexType index) {
++			const IndexType offset = kHalfDimensions * index;
++			for (IndexType j = 0; j < kHalfDimensions; ++j)
++				entry.accumulation[j] -= weights_[offset + j];
++		};
++#endif
++
++		if (!entry.computed) {
++			// 初回はbiasesから全駒を加算して構築する (従来のrefreshと同じコスト)
++			std::memcpy(entry.accumulation, biases_, kHalfDimensions * sizeof(BiasType));
++			for (PieceNumber i = PIECE_NUMBER_ZERO; i < PIECE_NUMBER_NB; ++i) {
++				add_column(FeatureType::MakeIndex(sq_k, pieces[i]));
++				entry.pieces[i] = pieces[i];
++			}
++			entry.computed = true;
++		} else {
++			// エントリ保存時から値が変わった駒スロットだけ差分適用する
++			for (PieceNumber i = PIECE_NUMBER_ZERO; i < PIECE_NUMBER_NB; ++i) {
++				const BonaPiece now = pieces[i];
++				if (entry.pieces[i] != now) {
++					sub_column(FeatureType::MakeIndex(sq_k, entry.pieces[i]));
++					add_column(FeatureType::MakeIndex(sq_k, now));
++					entry.pieces[i] = now;
++				}
++			}
++		}
++
++		std::memcpy(pos.state()->accumulator.accumulation[perspective][0],
++		            entry.accumulation, kHalfDimensions * sizeof(BiasType));
++	}
++
+ 	// Calculate cumulative value without using difference calculation
+ 	// 差分計算を用いずに累積値を計算する
+ 	void refresh_accumulator(const Position& pos) const {
+ 		auto& accumulator = pos.state()->accumulator;
++
++		if constexpr (kUseAccumulatorCache) {
++			for (Color perspective : {BLACK, WHITE})
++				refresh_perspective_with_cache(pos, perspective);
++			accumulator.computed_accumulation = true;
++			accumulator.computed_score = false;
++			return;
++		}
+ 		for (IndexType i = 0; i < kRefreshTriggers.size(); ++i) {
+ 			Features::IndexList active_indices[2];
+ 			RawFeatures::AppendActiveIndices(pos, kRefreshTriggers[i], active_indices);
+@@ -540,11 +635,15 @@ class FeatureTransformer {
+ 	// Calculate cumulative value using difference calculation
+ 	// 差分計算を用いて累積値を計算する
+ 	void update_accumulator(const Position& pos) const {
+-		const auto prev_accumulator = pos.state()->previous->accumulator;
++		// 参照で受ける (値で受けるとAccumulator丸ごと約4KBのコピーが毎回発生する。
++		// experiment-002で観測されたmemmove費目の主因)
++		const auto& prev_accumulator = pos.state()->previous->accumulator;
+ 		auto&      accumulator      = pos.state()->accumulator;
+ 		for (IndexType i = 0; i < kRefreshTriggers.size(); ++i) {
+ 			Features::IndexList removed_indices[2], added_indices[2];
+-			bool                reset[2];
++			// dirty_num == 0 のときAppendChangedIndicesはreset[]を書かずに
++			// returnするので、防御的にfalseで初期化しておく
++			bool                reset[2] = { false, false };
+ 			RawFeatures::AppendChangedIndices(pos, kRefreshTriggers[i], removed_indices, added_indices, reset);
+ 			for (Color perspective : {BLACK, WHITE}) {
+ #if defined(VECTOR)
+@@ -552,7 +651,13 @@ class FeatureTransformer {
+ 				auto accumulation              = reinterpret_cast<vec_t*>(&accumulator.accumulation[perspective][i][0]);
+ #endif
+ 				if (reset[perspective]) {
+-					if (i == 0) {
++					if constexpr (kUseAccumulatorCache) {
++						// 全計算 (biases + 全特徴量の加算) の代わりに
++						// AccumulatorCacheとの差分で構築する。
++						// added_indices[perspective]に集められた全特徴量はここでは適用しない。
++						refresh_perspective_with_cache(pos, perspective);
++						continue;
++					} else if (i == 0) {
+ 						std::memcpy(accumulator.accumulation[perspective][i], biases_,
+ 						            kHalfDimensions * sizeof(BiasType));
+ 					} else {
