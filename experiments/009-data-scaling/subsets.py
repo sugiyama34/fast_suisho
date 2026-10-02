@@ -51,6 +51,9 @@ ARMS: dict[str, list[int]] = {
 # S0 (010/020/030) は full 以外の全 arm で held-out になる
 for k in (6, 7, 8, 9):
     ARMS[f"p{k * 10}"] = files_of(NESTED_ORDER[:k])
+# p3 (2026-10-02 追加): 1 ファイル = 3.3%。p10 の削減 (90%) でも下位 75% のアブレーションほど弱くならない
+# 見込みのため、データ削減側の曲線をその先まで延ばす。p3 ⊂ p10
+ARMS["p3"] = [1]
 
 
 def teacher_arg(arm: str) -> str:

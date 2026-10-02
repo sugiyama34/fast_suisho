@@ -31,6 +31,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
+from subsets import ARMS, N_FILES  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 GAMES = HERE / "games"
@@ -39,7 +40,8 @@ NOTE = HERE / "notes" / "results.md"
 STATE = Path("/mnt/nvme1/sugiyama/pipeline/state.json")
 FV_FLAG = Path("/mnt/nvme1/sugiyama/fv/full.decided")
 PCTS = (5, 10, 20, 30, 50, 75)
-DATA_ARMS = ("p90", "p80", "p70", "p60", "p50", "p30", "p10")  # 削ったデータ = 100 − 数字
+# 削った割合はファイル数から (removed_pct)
+DATA_ARMS = ("p90", "p80", "p70", "p60", "p50", "p30", "p10", "p3")
 ARM_PAIRS = 2000
 N_BOOT = 2000
 
@@ -141,6 +143,11 @@ def ablation_names() -> tuple[str, str, dict, str]:
         names,
         "full-e12",
     )
+
+
+def removed_pct(arm: str) -> float:
+    """arm で削った教師データの割合 (%)。p3 は 1/30 ファイルなので 96.7%。"""
+    return round(100 * (1 - len(ARMS[arm]) / N_FILES), 1)
 
 
 def arm_best_job(arm: str, fv: int) -> tuple[str, int] | None:
@@ -279,7 +286,7 @@ def equivalence() -> dict | None:
     for arm in DATA_ARMS:
         found = arm_best_job(arm, fv)
         if found:
-            data[100 - int(arm[1:])] = (arm, found[1], pair_scores(found[0]))
+            data[removed_pct(arm)] = (arm, found[1], pair_scores(found[0]))
     abl = {}
     for rank in ("teach", "match"):
         for m in ("zs", "rs"):
@@ -435,7 +442,7 @@ def write_note(abl_rows: list[dict], eq: dict | None) -> None:
         ]
         for r in eq["data"]:
             lines.append(
-                f"| {r['arm']} | e{r['epoch']} | {r['removed']}% | {r['delta']:+.1f} | {fmt_ci(*r['ci'])} |"
+                f"| {r['arm']} | e{r['epoch']} | {r['removed']:g}% | {r['delta']:+.1f} | {fmt_ci(*r['ci'])} |"
             )
         if "epoch" in eq["aux"]:
             d, ci = eq["aux"]["epoch"]
