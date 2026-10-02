@@ -736,3 +736,589 @@ priority = 4
 workers = 56
 note = "基準 full (アブレーション・データ削減の共通の基準)"
 
+
+# 9. pipeline.py が追加: arm (p50/p10/p90/p70/p80) の対局
+[[job]]
+name = "arm-p50-sel-e2@48-vs-s11@32-300k"
+a = "009-p50/0002"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 22
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p50-sel-e4@48-vs-s11@32-300k"
+a = "009-p50/0004"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 22
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p50-sel-e6@48-vs-s11@32-300k"
+a = "009-p50/0006"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 22
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p50-sel-e8@48-vs-s11@32-300k"
+a = "009-p50/0008"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 22
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p50-sel-e10@48-vs-s11@32-300k"
+a = "009-p50/0010"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 22
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p10-sel-e1@48-vs-s11@32-300k"
+a = "009-p10/0001"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 22
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p10-sel-e2@48-vs-s11@32-300k"
+a = "009-p10/0002"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 22
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p10-sel-e3@48-vs-s11@32-300k"
+a = "009-p10/0003"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 22
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p10-sel-e4@48-vs-s11@32-300k"
+a = "009-p10/0004"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 18
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p10-sel-e6@48-vs-s11@32-300k"
+a = "009-p10/0006"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 18
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p90-sel-e2@48-vs-s11@32-300k"
+a = "009-p90/0002"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 18
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p90-sel-e4@48-vs-s11@32-300k"
+a = "009-p90/0004"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 18
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p90-sel-e6@48-vs-s11@32-300k"
+a = "009-p90/0006"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 18
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p90-sel-e8@48-vs-s11@32-300k"
+a = "009-p90/0008"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 18
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p90-sel-e10@48-vs-s11@32-300k"
+a = "009-p90/0010"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 18
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p70-sel-e2@48-vs-s11@32-300k"
+a = "009-p70/0002"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 18
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p70-sel-e4@48-vs-s11@32-300k"
+a = "009-p70/0004"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 18
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p70-sel-e6@48-vs-s11@32-300k"
+a = "009-p70/0006"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 18
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p70-sel-e8@48-vs-s11@32-300k"
+a = "009-p70/0008"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 18
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p70-sel-e10@48-vs-s11@32-300k"
+a = "009-p70/0010"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 22
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p80-sel-e2@48-vs-s11@32-300k"
+a = "009-p80/0002"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 22
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p80-sel-e4@48-vs-s11@32-300k"
+a = "009-p80/0004"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 22
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p80-sel-e6@48-vs-s11@32-300k"
+a = "009-p80/0006"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 22
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p80-sel-e8@48-vs-s11@32-300k"
+a = "009-p80/0008"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 22
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p80-sel-e10@48-vs-s11@32-300k"
+a = "009-p80/0010"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 22
+note = "arm の最良 epoch の選択"
+
+
+# pipeline.py が追加: p50 の最良 epoch = e10
+[[job]]
+name = "arm-p50-best-e10@48-vs-s11@32-300k-2000p"
+a = "009-p50/0010"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 2000
+priority = 12
+workers = 22
+note = "p50 の最良 epoch (基準 full と同じ 2,000 ペア)"
+
+
+# pipeline.py が追加: p10 の最良 epoch = e4
+[[job]]
+name = "arm-p10-best-e4@48-vs-s11@32-300k-2000p"
+a = "009-p10/0004"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 2000
+priority = 12
+workers = 62
+note = "p10 の最良 epoch (基準 full と同じ 2,000 ペア)"
+
+
+# 手動で追加 (10-02): arm p3 の候補 epoch (優先度 20 = 7 arm の後)
+[[job]]
+name = "arm-p3-sel-e1@48-vs-s11@32-300k"
+a = "009-p3/0001"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 20
+workers = 62
+note = "p3 (手動で追加) の最良 epoch の選択。7 arm の後"
+
+[[job]]
+name = "arm-p3-sel-e2@48-vs-s11@32-300k"
+a = "009-p3/0002"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 20
+workers = 62
+note = "p3 (手動で追加) の最良 epoch の選択。7 arm の後"
+
+[[job]]
+name = "arm-p3-sel-e3@48-vs-s11@32-300k"
+a = "009-p3/0003"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 20
+workers = 62
+note = "p3 (手動で追加) の最良 epoch の選択。7 arm の後"
+
+[[job]]
+name = "arm-p3-sel-e4@48-vs-s11@32-300k"
+a = "009-p3/0004"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 20
+workers = 62
+note = "p3 (手動で追加) の最良 epoch の選択。7 arm の後"
+
+
+# pipeline.py が追加: p90 の最良 epoch = e10
+[[job]]
+name = "arm-p90-best-e10@48-vs-s11@32-300k-2000p"
+a = "009-p90/0010"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 2000
+priority = 12
+workers = 62
+note = "p90 の最良 epoch (基準 full と同じ 2,000 ペア)"
+
+
+# pipeline.py が追加: p70 の最良 epoch = e10
+[[job]]
+name = "arm-p70-best-e10@48-vs-s11@32-300k-2000p"
+a = "009-p70/0010"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 2000
+priority = 12
+workers = 62
+note = "p70 の最良 epoch (基準 full と同じ 2,000 ペア)"
+
+
+# pipeline.py が追加: p80 の最良 epoch = e8
+[[job]]
+name = "arm-p80-best-e8@48-vs-s11@32-300k-2000p"
+a = "009-p80/0008"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 2000
+priority = 12
+workers = 62
+note = "p80 の最良 epoch (基準 full と同じ 2,000 ペア)"
+
+
+# 10. pipeline.py が追加: arm p60/p30 の対局
+[[job]]
+name = "arm-p60-sel-e2@48-vs-s11@32-300k"
+a = "009-p60/0002"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 56
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p60-sel-e4@48-vs-s11@32-300k"
+a = "009-p60/0004"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 62
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p60-sel-e6@48-vs-s11@32-300k"
+a = "009-p60/0006"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 62
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p60-sel-e8@48-vs-s11@32-300k"
+a = "009-p60/0008"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 62
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p60-sel-e10@48-vs-s11@32-300k"
+a = "009-p60/0010"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 62
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p30-sel-e2@48-vs-s11@32-300k"
+a = "009-p30/0002"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 62
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p30-sel-e4@48-vs-s11@32-300k"
+a = "009-p30/0004"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 62
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p30-sel-e6@48-vs-s11@32-300k"
+a = "009-p30/0006"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 62
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p30-sel-e8@48-vs-s11@32-300k"
+a = "009-p30/0008"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 62
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p30-sel-e10@48-vs-s11@32-300k"
+a = "009-p30/0010"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 62
+note = "arm の最良 epoch の選択"
+
+
+# pipeline.py が追加: p60 の最良 epoch = e10
+[[job]]
+name = "arm-p60-best-e10@48-vs-s11@32-300k-2000p"
+a = "009-p60/0010"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 2000
+priority = 12
+workers = 62
+note = "p60 の最良 epoch (基準 full と同じ 2,000 ペア)"
+
+
+# pipeline.py が追加: p30 の最良 epoch = e8
+[[job]]
+name = "arm-p30-best-e8@48-vs-s11@32-300k-2000p"
+a = "009-p30/0008"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 2000
+priority = 12
+workers = 62
+note = "p30 の最良 epoch (基準 full と同じ 2,000 ペア)"
+
+
+# p3_followup.py が追加: p3 の最良 epoch = e3
+[[job]]
+name = "arm-p3-best-e3@48-vs-s11@32-300k-2000p"
+a = "009-p3/0003"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 2000
+priority = 20
+workers = 62
+note = "p3 の最良 epoch (基準 full と同じ 2,000 ペア)"
+
