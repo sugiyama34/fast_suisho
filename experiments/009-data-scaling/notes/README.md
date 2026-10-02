@@ -12,5 +12,6 @@
 | [server-suzuki.md](server-suzuki.md) | 新サーバー suzuki の環境構築と計測値 (学習スループット・対局速度) |
 | [ratings.md](ratings.md) | 対局結果の一覧 (`match_queue.py` が自動で追記) と対局キューの使い方 |
 | [loss-eval.md](loss-eval.md) | loss の測定ツール (`loss_eval/`): nn.bin の CPU 順伝播 (やねうら王と同一), 固定標本 A〜D, 稀さでの層別, 検証 |
+| [conclusion.md](conclusion.md) | **結論 (2026-10-03)**: 「下位 X% のアブレーション ≈ データ Y% 削減」の答えと読み取り・限界 |
 | [results.md](results.md) | **結果のまとめ (自動生成)**: アブレーションの図 5 枚と表、データ削減との比較 (`plot_results.py`, pipeline が 15 分ごとに更新) |
 | [pipeline-status.md](pipeline-status.md) | 自律運転 (`pipeline.py`) の段階と履歴 (自動生成) |
