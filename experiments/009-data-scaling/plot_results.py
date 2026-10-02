@@ -338,13 +338,30 @@ def equivalence() -> dict | None:
             out["aux"]["noise"] = (dd(allidx), pct_ci([dd(bb) for bb in boots]))
     xs, fs = curve(allidx) if removed else ([], [])
     curves = [curve(bb) for bb in boots] if removed else []
-    for (rank, m, pct), c in abl.items():
-        row = {"rank": rank, "mode": m, "pct": pct, "delta": delta(c, allidx),
-               "ci": pct_ci([delta(c, bb) for bb in boots])}  # fmt: skip
+    out["top"] = removed[-1] if removed else None
+
+    def add_y(row: dict, bd: list) -> None:
         if removed:
             row["y"] = invert(xs, fs, row["delta"])
-            row["y_ci"] = pct_ci([invert(*cv, delta(c, bb)) for cv, bb in zip(curves, boots)])
+            row["y_ci"] = pct_ci([invert(*cv, d) for cv, d in zip(curves, bd)])
+
+    bds = {}
+    for (rank, m, pct), c in abl.items():
+        bds[(rank, m, pct)] = bd = [delta(c, bb) for bb in boots]
+        row = {"rank": rank, "mode": m, "pct": pct, "delta": delta(c, allidx), "ci": pct_ci(bd)}
+        add_y(row, bd)
         out["abl"].append(row)
+    # まとめ: 下位 X% ごとに 4 設定 (順位 2 × モード 2) の差を平均した 1 行。区間は同じ再標本で平均してから取る
+    out["pooled"] = []
+    for pct in PCTS:
+        ks = [k for k in bds if k[2] == pct]
+        if len(ks) < 4:
+            continue
+        bd = [sum(bds[k][i] for k in ks) / len(ks) for i in range(N_BOOT)]
+        row = {"pct": pct, "delta": sum(r["delta"] for r in out["abl"] if r["pct"] == pct) / len(ks),
+               "ci": pct_ci(bd)}  # fmt: skip
+        add_y(row, bd)
+        out["pooled"].append(row)
     return out
 
 
@@ -387,8 +404,9 @@ def fmt_ci(a: float, b: float) -> str:
     return f"[{a:+.0f}, {b:+.0f}]"
 
 
-def fy(v: float) -> str:
-    return "0%" if v == 0 else (">90%" if math.isinf(v) else f"{v:.0f}%")
+def fy(v: float, top: float) -> str:
+    """Y の表示。データ側の曲線の末端 (top %) より大きい低下は「>top%」。"""
+    return "0%" if v == 0 else (f">{top:g}%" if math.isinf(v) else f"{v:.0f}%")
 
 
 def write_note(abl_rows: list[dict], eq: dict | None) -> None:
@@ -426,12 +444,29 @@ def write_note(abl_rows: list[dict], eq: dict | None) -> None:
             f"| 順位 | モード | アブレーション X | {ref} からの差 (Elo) | 95% CI | 同等なデータ削減 Y | 95% 区間 |",
             "| --- | --- | --- | --- | --- | --- | --- |",
         ]
+        top = eq["top"]
+
+        def ys(r: dict) -> tuple[str, str]:
+            if "y" not in r:
+                return "–", "–"
+            return fy(r["y"], top), f"[{fy(r['y_ci'][0], top)}, {fy(r['y_ci'][1], top)}]"
+
+        if eq["pooled"]:
+            pooled = [
+                "**まとめ (4 設定の平均)**: 順位 (教師 / 対局) × モード (zero / random) の 4 本の差を平均した値。",
+                "4 本は同じ親・同じ開始局面で、選ぶ特徴量も大きく重なるので独立ではない (区間は同じ再標本で平均してから取る)。\n",
+                f"| アブレーション X | {ref} からの差 (Elo, 4 設定の平均) | 95% CI | 同等なデータ削減 Y | 95% 区間 |",
+                "| --- | --- | --- | --- | --- |",
+            ]
+            for r in eq["pooled"]:
+                y = ys(r)
+                pooled.append(
+                    f"| {r['pct']}% | {r['delta']:+.1f} | {fmt_ci(*r['ci'])} | {y[0]} | {y[1]} |"
+                )
+            pooled += ["", "**設定ごと**:\n", lines.pop(-2), lines.pop(-1)]
+            lines += pooled
         for r in eq["abl"]:
-            y = (
-                (fy(r["y"]), f"[{fy(r['y_ci'][0])}, {fy(r['y_ci'][1])}]")
-                if "y" in r
-                else ("–", "–")
-            )
+            y = ys(r)
             lines.append(
                 f"| {RANK_JA[r['rank']]} | {MODE_JA[r['mode']]} | {r['pct']}% | {r['delta']:+.1f} | "
                 f"{fmt_ci(*r['ci'])} | {y[0]} | {y[1]} |"
