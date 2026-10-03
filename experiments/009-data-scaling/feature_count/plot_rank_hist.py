@@ -6,6 +6,7 @@
 
 - `feature_rank_hist.png`: 順位を 1% ずつ (約 1,231 個ずつ) の区間に分けたヒストグラム。縦軸 = 区間の出現の割合
 - `feature_rank_line.png`: 1 特徴量 = 1 点の折れ線。縦軸 = その特徴量 1 個の出現の割合
+- `feature_rank_line_match.png`: 上の図の下段 (対局) だけ
 
     .venv/bin/python experiments/009-data-scaling/feature_count/plot_rank_hist.py
 """
@@ -40,10 +41,10 @@ def cutoffs(ax, n: int) -> None:
 
 
 def finish(fig, axes, n: int, ylim: tuple[float, float], note: str, out: Path) -> None:
-    axes[1].set_xlabel(XLAB.format(n=n), color=INK2, fontsize=9)
-    axes[1].set_xlim(0, n)
-    axes[1].set_ylim(*ylim)
-    axes[1].xaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v / 1000:.0f}k"))
+    axes[-1].set_xlabel(XLAB.format(n=n), color=INK2, fontsize=9)
+    axes[-1].set_xlim(0, n)
+    axes[-1].set_ylim(*ylim)
+    axes[-1].xaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v / 1000:.0f}k"))
     fig.text(0.01, 0.005, note, color=INK2, fontsize=7.5)
     fig.tight_layout(rect=(0, 0.02, 1, 1))
     fig.savefig(out, dpi=110, facecolor=SURFACE)
@@ -82,14 +83,19 @@ def plot_bins(panels: list, n: int) -> None:
     )
 
 
-def plot_per_feature(panels: list, n: int) -> None:
+def plot_per_feature(panels: list, n: int, idx: tuple[int, ...], out: Path, height: float) -> None:
+    """idx = 描く段 (0 = 教師, 1 = 対局)。対局の段には 1% 区間ごとの中央値と教師の曲線を重ねる。"""
     rank = np.arange(1, n + 1)
-    fig, axes = plt.subplots(2, 1, figsize=(10, 7.5), sharex=True, sharey=True, facecolor=SURFACE)
+    fig, axes = plt.subplots(len(idx), 1, figsize=(10, height), sharex=True, sharey=True,
+                             facecolor=SURFACE, squeeze=False)  # fmt: skip
+    axes = axes[:, 0]
     ylo, yhi = np.inf, 0.0
     bins = np.array_split(np.arange(n), N_BINS)
     mid = np.array([b.mean() + 1 for b in bins])
     ref = panels[0][0] / panels[0][0].sum() * 100  # 教師の曲線 (下段に重ねる参照線)
-    for i, (ax, (cs, title, color)) in enumerate(zip(axes, panels)):
+    ref_label = "training data (top panel)" if len(idx) > 1 else "training data (same ranking)"
+    for ax, i in zip(axes, idx):
+        cs, title, color = panels[i]
         share = cs / cs.sum() * 100
         pos = share > 0
         style(ax, title, "", "% of all occurrences (one feature)")
@@ -103,7 +109,7 @@ def plot_per_feature(panels: list, n: int) -> None:
             ax.plot(mid[med > 0], med[med > 0], color=INK, linewidth=1.6,
                     label="median of each 1% of features")  # fmt: skip
             ax.plot(rank[ref > 0], ref[ref > 0], color=panels[0][2], linewidth=1.2,
-                    linestyle=(0, (4, 2)), label="training data (top panel)")  # fmt: skip
+                    linestyle=(0, (4, 2)), label=ref_label)  # fmt: skip
             ax.legend(loc="lower left", fontsize=8, frameon=True, facecolor=SURFACE, edgecolor=GRID)
         ax.set_yscale("log")
         ylo, yhi = min(ylo, share[pos].min() / 3), max(yhi, share.max() * 3)
@@ -121,7 +127,7 @@ def plot_per_feature(panels: list, n: int) -> None:
         n,
         (ylo, yhi),
         note + "of the final grid). " + TIES,
-        FIG / "feature_rank_line.png",
+        out,
     )
 
 
@@ -142,7 +148,8 @@ def main() -> None:
         (search[order].astype(np.float64), "Suisho 11 matches (evaluations during search)", green),
     ]
     plot_bins(panels, n)
-    plot_per_feature(panels, n)
+    plot_per_feature(panels, n, (0, 1), FIG / "feature_rank_line.png", 7.5)
+    plot_per_feature(panels, n, (1,), FIG / "feature_rank_line_match.png", 4.6)
 
 
 if __name__ == "__main__":

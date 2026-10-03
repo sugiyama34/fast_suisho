@@ -202,7 +202,8 @@ full で出現した特徴量 (122,590 個) のうち、各 arm の教師での�
 - 対局の分布も、教師の順位に沿ってほぼ同じ形で減る (教師で稀な特徴量は対局でも稀)。最も稀な数区間だけは対局の方が
   さらに急に落ちる (最下位の区間: 教師 4.5 × 10⁻⁷ %、対局 3.6 × 10⁻¹⁰ %)
 
-1 特徴量 = 1 点の版 (折れ線, `figures/feature_rank_line.png`、同じスクリプトが出力):
+1 特徴量 = 1 点の版 (折れ線, `figures/feature_rank_line.png`、同じスクリプトが出力。下段の対局だけの版は
+`figures/feature_rank_line_match.png`):
 
 ![rank line](../figures/feature_rank_line.png)
 
