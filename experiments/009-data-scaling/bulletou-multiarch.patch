@@ -1,0 +1,19 @@
+diff --git a/crates/cuda_cpp/build.rs b/crates/cuda_cpp/build.rs
+index 87d306f2..c5ca021f 100644
+--- a/crates/cuda_cpp/build.rs
++++ b/crates/cuda_cpp/build.rs
+@@ -45,5 +45,14 @@ fn main() {
+     build.flag("-std=c++17");
+     build.flag("-O3");
+     build.flag("--use_fast_math");
++    // Local patch (fast_suisho experiment-009): emit native SASS for Ampere (A100,
++    // sm_80), Hopper (sm_90) and Blackwell workstation GPUs (sm_120), plus
++    // compute_80 PTX for JIT on anything newer. Supersedes bulletou-sm120.patch,
++    // whose sm_120-only build cannot run on an A100. sm_120 needs nvcc >= 12.8
++    // (sm_90 needs >= 11.8): with an older toolkit, delete the lines it rejects.
++    build.flag("-gencode").flag("arch=compute_80,code=sm_80");
++    build.flag("-gencode").flag("arch=compute_90,code=sm_90");
++    build.flag("-gencode").flag("arch=compute_120,code=sm_120");
++    build.flag("-gencode").flag("arch=compute_80,code=compute_80");
+     build.compile("bulletou_cuda_cpp_backend");
+ }

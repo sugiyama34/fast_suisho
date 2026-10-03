@@ -1,0 +1,25 @@
+# experiment-009: 奏乗教師 (.psv) の HalfKA2 特徴出現回数カウンタ。
+# 特徴抽出は BulletOu 2a8e5ed の bulletou_lib をそのまま使う (学習と同一の実装)。
+# bulletou_lib は data/bulletou/BulletOu (docs/SETUP.md) を path 参照し、
+# CUDA backend feature (cuda-cpp-backend) は有効にしない = 純 Rust でビルドできる。
+# Cargo.lock は BulletOu の Cargo.lock を種にしてある (共通依存のバージョンを揃えるため)。
+[package]
+name = "feature_count"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# 上位 (fast_suisho) にも BulletOu にも属さない単独 workspace
+[workspace]
+
+[dependencies]
+bulletou_lib = { path = "../../../data/bulletou/BulletOu/crates/bulletou_lib", default-features = false }
+clap = { version = "4.5", features = ["derive"] }
+memmap2 = "0.9"
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+debug = false

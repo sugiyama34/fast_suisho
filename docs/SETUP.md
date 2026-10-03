@@ -20,6 +20,16 @@
 
 - 2 つの clone は同じ GitHub リポジトリ (`sugiyama34/fast_suisho`)。トラックごとに
   作業ツリーを分けていただけなので、新サーバーでは 1 つにまとめてもよい
+- **`/home` が狭い場合**: 教師 (587 GB) と checkpoint (1 個 2.3 GB × epoch 数 × arm 数) は
+  大容量ディスクに置き、`data/teacher/sojo` と `data/bulletou/checkpoints` をシンボリック
+  リンクにする。BulletOu もスクリプトもリンクを辿る (2026-09-28 kajiki で確認):
+
+```sh
+mkdir -p /mnt/<disk>/<user>/teacher/sojo/train /mnt/<disk>/<user>/checkpoints
+mkdir -p data/teacher data/bulletou
+ln -s /mnt/<disk>/<user>/teacher/sojo data/teacher/sojo
+ln -s /mnt/<disk>/<user>/checkpoints data/bulletou/checkpoints
+```
 - **絶対パスの既定値に注意**: `experiments/005-bulletou-sojo/match_runner.py` は
   `--engine` の既定値が `/home/sugiyama/YaneuraOu/source/YaneuraOu-by-gcc`、
   `--baseline-evaldir` の既定値が `/home/sugiyama/suisho11`。ホームディレクトリが
@@ -50,8 +60,23 @@ bash scripts/install-hooks.sh   # git の pre-commit hook を有効化
   (検査のみ。修正はしない)
 - **コミット署名**: 旧開発機では SSH 署名 (`gpg.format=ssh`, `commit.gpgsign=true`) を
   使っていた。新サーバーでも鍵を用意して設定する
+- **`scripts/install-hooks.sh` はユーザーが実行する**。中身は `git config core.hooksPath` で、
+  リポジトリの hook (`block-dangerous-git.sh`) が Claude からの `git config` を止めるため
+- **CUDA toolkit の版**: `nvidia-smi` 右上の「CUDA Version」(ドライバが対応する上限) 以下の
+  toolkit を使う。`nvcc` は PATH に無いことが多いので `/usr/local/cuda/bin` を足す
+  (kajiki では toolkit 13.1 / driver 590.48 で問題なし)
 - **WandB**: API キーは `wandb login` ではなく環境変数で渡す運用 (`~/.netrc` への平文保存を
-  避けるため)。詳細は `docs/wandb-guide.md`
+  避けるため)。詳細は `docs/wandb-guide.md`。**キーはリポジトリにも `~/.claude/settings.json`
+  にも書かない** (2026-09-28 ユーザー方針)。Claude Code を起動するシェルでだけ export する。
+  先頭に半角スペースを付けると bash の履歴に残らない (Ubuntu 既定の `HISTCONTROL=ignoreboth`):
+
+```sh
+ export WANDB_API_KEY=...        # 先頭の半角スペースに注意 (または: read -rs WANDB_API_KEY && export WANDB_API_KEY)
+cd ~/fast_suisho && claude --continue
+```
+
+  キーが無い環境では experiment-009 以降の supervisor は offline で記録する。後でキーのある
+  端末から `uv run wandb sync wandb/offline-run-*` で送る
 
 ## 2. やねうら王 (エンジン)
 
@@ -65,7 +90,11 @@ make -j"$(nproc)" normal YANEURAOU_EDITION=YANEURAOU_ENGINE_SFNN_halfka2_1024-7-
 
 - `PYTHON=python3` は必須 (Makefile がアーキテクチャ名からヘッダを自動生成する)
 - AVX-512 のあるマシンでは `TARGET_CPU` の変更を検討する。**ただしベースラインとの比較では
-  必ず両方を同じビルド条件にする** (`docs/PLAN.md` フェーズ 2 の方針)
+  必ず両方を同じビルド条件にする** (`docs/PLAN.md` フェーズ 2 の方針)。
+  使える値は `AVX512VNNI` / `AVX512` / `AVXVNNI` / `AVX2` / `ZEN3` など (Makefile 冒頭の一覧)。
+  kajiki (Xeon Gold 6526Y) では `AVX512VNNI` 版が 3 秒の簡易計測で AVX2 版より約 8% 遅かった
+  (負荷のある共用機での 1 回計測なので参考値)。ビルドし直すときは `make clean` を忘れない
+  (別 TARGET_CPU の .o が残っていると混ざる)
 - **対局に使っていたバイナリは finny tables 版**: experiment-007 以降の対局は
   experiment-008 の `finny.patch` を当てたビルド (sha256 `4881fcf4…`) を使っている。
   同じ条件で対局するなら、パッチを当ててからビルドする:
@@ -85,7 +114,16 @@ cd source && make clean && make -j"$(nproc)" normal ...(上と同じ引数)
 - `~/suisho11/nn.bin` (135 MB) と `sfnnwop-1536.h`
 - sha256: `a78b7f889843037d344f482623b3febd124ead5c1f34f134d9f1c2c78cd0f829`
 - **入手元**: ユーザーの Google Drive フォルダに保管されている。新マシンにはユーザーが
-  共有するので、`~/suisho11/` に置いてから sha256 を確認する:
+  共有リンクを渡すので、`~/suisho11/` に置いてから sha256 を確認する。ダウンロードは gdown で
+  できる (gdown 6.x は `--fuzzy` を廃止。共有 URL をそのまま渡せばよい):
+
+```sh
+mkdir -p ~/suisho11 && cd ~/suisho11
+uvx gdown '<nn.bin の共有 URL>'
+uvx gdown '<sfnnwop-1536.h の共有 URL>'
+```
+
+  sha256 の確認:
 
 ```sh
 echo "a78b7f889843037d344f482623b3febd124ead5c1f34f134d9f1c2c78cd0f829  nn.bin" | (cd ~/suisho11 && sha256sum -c -)
@@ -117,7 +155,10 @@ bash scripts/fetch_teacher.sh --verify   # 取得後に sha256 を全ファイ�
 | 奏乗教師 (PackedSfenValue) | `data/teacher/sojo/train/dlsuisho_unique_NNN.psv` | 約 587 GB (30 ファイル) |
 | floodgate.hcpe (検証セット) | `data/teacher/floodgate/floodgate.hcpe` | 約 33 MB |
 
-- experiment-006 以降の学習スクリプトは 30 ファイル全部が揃っていないと起動しない
+- experiment-006 / 007 の学習スクリプトは 30 ファイル全部が揃っていないと起動しない。
+  experiment-009 の `run_training.sh` は arm が使うファイルだけを (サイズまで) 確認する
+- `SOJO_ORDER` で取得順を指定できる。experiment-009 は小さいサブセットから揃う順
+  (`experiments/009-data-scaling/hypothesis.md` §4) で取ると、全部揃う前に学習を始められる
 - ダウンロードは HuggingFace から 4 並列。回線次第で半日〜1 日かかる。
   旧開発機から直接コピーできるならその方が速い
 
@@ -132,7 +173,17 @@ git apply ../../../experiments/005-bulletou-sojo/bulletou-sm120.patch
 
 - `bulletou-sm120.patch` は Blackwell (sm_120) 向けの SASS を追加するだけのパッチ。
   数値経路は変わらない。上流の既定は sm_75 のみで、無しでも起動時 JIT で動くが遅い。
-  GPU の世代が違う場合は `-gencode` の値をその GPU に合わせる
+  **このパッチは sm_120 専用で、A100 (sm_80) 等では動かない** (明示した `-gencode` だけが
+  埋め込まれ、compute_120 の PTX は古い GPU で JIT できない)
+- **GPU が Blackwell 以外なら `experiments/009-data-scaling/bulletou-multiarch.patch` を使う**
+  (sm120 パッチの代わりに当てる。sm_80 / sm_90 / sm_120 の SASS + compute_80 PTX)。
+  kajiki で CUDA 13.1 によるビルドと `cuobjdump` での埋め込み確認まで済み (A100 実機は未確認)。
+  sm_120 は nvcc 12.8 以上、sm_90 は 11.8 以上が必要。`nvcc --version` がそれより古ければ、
+  パッチを当てた後に `crates/cuda_cpp/build.rs` から該当する `-gencode` 行を消す:
+
+```sh
+git apply ../../../experiments/009-data-scaling/bulletou-multiarch.patch   # sm120 パッチの代わり
+```
 - Rust ツールチェインは旧開発機ではリポジトリ内 (`data/toolchains/`) に閉じ込めていた:
 
 ```sh
@@ -144,10 +195,22 @@ cargo build --release -p bulletou_lib --features cuda-cpp-backend --example bull
 
 - 生成物: `data/bulletou/BulletOu/target/release/examples/bulletou`
 - 学習の起動には `LD_LIBRARY_PATH=/usr/local/cuda/lib64` が必要
-  (各実験の `run_training.sh` が設定する)
+  (各実験の `run_training.sh` が設定する)。toolkit が `/usr/local/cuda` 以外にある場合は、
+  上のビルドでは `/usr/local/cuda` をその場所に読み替え、学習時は `CUDA_HOME` を export する
+  (experiment-009 の `run_training.sh` は `${CUDA_HOME:-/usr/local/cuda}/lib64` を使う)。
+  suzuki: `/mnt/nvme1/sugiyama/cuda-12.8` (CUDA 12.8, sudo なしでユーザー領域に導入)
 - checkpoint は `data/bulletou/checkpoints/<実験>-<arm>/NNNN/nn.bin` に出る。
   旧開発機では全 checkpoint で約 500 GB あった。ディスクは教師データと合わせて
   **最低 1.2 TB 程度**を見込む
+- BulletOu `2a8e5ed` の挙動 (2026-09-28 ソースで確認):
+  - `--teacher` はファイル・ディレクトリ・それらのカンマ区切りを受け付ける (glob は不可)。
+    ディレクトリ内はパス名の辞書順、明示リストはその順で読む。シンボリックリンクは辿る
+  - 学習中の再シャッフルはない。教師ストリームは EOF で先頭に戻る (epoch 境界では戻らない)。
+    重み初期化のシードは固定 (`--seed` は無い)
+  - `--threads` を既定の 4 のままにすると内部で `コア数×2` (最大 24) に置き換わる。
+    共用機では明示的に 8 などを指定する
+  - 「epoch 末 validation が改善しなければ停止」は `--lr-schedule plateau` 専用。step では発動しない
+  - checkpoint 1 個 = nn.bin 135 MB + state.bin 2.2 GB
 
 ## 7. 旧開発機から持ってくると便利なもの
 
@@ -169,9 +232,36 @@ cargo build --release -p bulletou_lib --features cuda-cpp-backend --example bull
    (`experiments/005-bulletou-sojo/run_training.sh smoke`) が数分で完走する
 4. 新サーバーの基準 NPS を取り直す。**旧開発機の NPS と直接比較しない**
    (CPU が違えば NPS の絶対値は変わる。比較は常に同一マシン上の A/B で行う)
+5. **学習スループットを実時間で測る** (学習計画の前提になる)。`BENCH=1` で sb=16 × 1 epoch を
+   走らせ、ログの進捗行 `[progress] ... sb k/16` の**時刻差**から 1 sb (約 4000 万局面) の秒数を出す
+   (最初の 1 本は起動時間を含むので捨てる)。進捗行の `pos/s` は GPU へのカーネル投入時間しか
+   数えないことがあり、kajiki では実時間の 6 倍の値が出た。1 run 単独と、実際に並べる本数で
+   同時に走らせた場合の両方を測る。同時計測では `OUT_TAG` で出力とログを分ける:
 
-## 9. 新サーバーのスペック
+```sh
+# 1 run 単独 (p10 の 3 ファイル。ログは experiments/009-data-scaling/logs/009-p10-bench.log)
+BENCH=1 bash experiments/009-data-scaling/run_training.sh p10 0
+# 2 run 同時 (GPU 0 と 1)
+BENCH=1 OUT_TAG=g0 bash experiments/009-data-scaling/run_training.sh p10 0 &
+BENCH=1 OUT_TAG=g1 bash experiments/009-data-scaling/run_training.sh p10 1 &
+wait
+# 1 sb あたりの秒数 (行頭の時刻から)
+grep -a 'progress\]' experiments/009-data-scaling/logs/009-p10-bench-g0.log \
+  | awk '{split($2,t,":"); s=t[1]*3600+t[2]*60+t[3]; if (p) print s-p; p=s}'
+```
 
-(移行後に記入: CPU / コア数 / AVX-512 の有無 / RAM / GPU / ディスク容量)。
-`docs/PLAN.md` の「環境メモ」は旧開発機のスペックなので、新サーバーの値はここか
-PLAN の環境メモに追記する。
+## 9. サーバーのスペック
+
+`docs/PLAN.md` の「環境メモ」は旧開発機のスペック。移行したサーバーの値はここに追記する。
+
+### kajiki (2026-09-28 に一時使用。学習には不向きと判断)
+
+| 項目 | 値 |
+| --- | --- |
+| CPU | Intel Xeon Gold 6526Y, 16 コア 16 スレッド, AVX-512 (VNNI / BF16 / FP16) あり |
+| RAM | 251 GB |
+| GPU | RTX PRO 6000 Blackwell Max-Q (96 GB) を MIG 1g.24gb ×4 に分割。**使ってよいのは MIG device 2 / 3 のみ** (0 / 1 は他ユーザー)。起動時は `CUDA_VISIBLE_DEVICES=<MIG の UUID>` |
+| ディスク | `/` SATA SSD 1.8 TB (空き約 230 GB), `/mnt/D` HDD 20 TB (空き 15 TB, 実測 275 MB/s) |
+| 学習速度 | MIG スライスあたり約 0.65M 局面/秒で GPU 律速 (1 スライスに 2 run 載せても合計は増えない)。864 億局面の 1 run に約 37 時間 |
+
+詳細な計測は `experiments/009-data-scaling/hypothesis.md` §7。
