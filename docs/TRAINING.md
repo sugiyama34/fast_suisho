@@ -20,7 +20,7 @@
 | experiment-005 (`005-bulletou-sojo`) | やねうらお氏共有レシピ (sb=12 × 16 epoch) の再現 | 水匠 11 比 −293 Elo。テンプレート値では学習量が桁違いに不足 | マージ済み (PR #14) |
 | experiment-006 (`006-standard-epoch`) | 学習量と LR 周期 (superbatches) のスケーリング | 氏の実設定 (sb=108 × 16) で −104 を再現。強さは教師 4〜5 周でピーク、以降は低下 | マージ済み (PR #15) |
 | experiment-007 (`007-wrm-factorizer`) | WRM loss / factorizer 無効化 / LR 単発アニール | FV_SCALE 補正後、WRM loss の効果は +54 Elo。最良 net は水匠 11 比 −40〜−60 | PR #19 (open) |
-| experiment-009 (`009-data-scaling`) | 教師データ量のアブレーション (100〜10%, 定跡除外は experiment-010) | 未着手。kajiki は GPU 律速で遅く、新サーバーで学習する | PR #23 (open) |
+| experiment-009 (`009-data-scaling`) | 稀な FT 特徴量のアブレーション X% ≈ 教師データ削減 Y% (水匠 11 相手, 300k ノード) | 下位 30% までは影響なし、50% ≈ 削減 55% (−16 Elo)、75% ≈ 削減 94% (−101 Elo)。データ削減自体は 50% で −6、90% で −64 | PR #23 (open) |
 
 詳細は各実験フォルダの `report.md` を読むこと。
 
