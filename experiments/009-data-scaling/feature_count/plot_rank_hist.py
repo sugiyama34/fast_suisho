@@ -109,7 +109,7 @@ def plot_per_feature(panels: list, n: int, idx: tuple[int, ...], out: Path, heig
             ax.plot(mid[med > 0], med[med > 0], color=INK, linewidth=1.6,
                     label="median of each 1% of features")  # fmt: skip
             ax.plot(rank[ref > 0], ref[ref > 0], color=panels[0][2], linewidth=1.2,
-                    linestyle=(0, (4, 2)), label=ref_label)  # fmt: skip
+                    label=ref_label)  # fmt: skip
             ax.legend(loc="lower left", fontsize=8, frameon=True, facecolor=SURFACE, edgecolor=GRID)
         ax.set_yscale("log")
         ylo, yhi = min(ylo, share[pos].min() / 3), max(yhi, share.max() * 3)
