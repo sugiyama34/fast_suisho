@@ -7,6 +7,7 @@
 - `feature_rank_hist.png`: 順位を 1% ずつ (約 1,231 個ずつ) の区間に分けたヒストグラム。縦軸 = 区間の出現の割合
 - `feature_rank_line.png`: 1 特徴量 = 1 点の折れ線。縦軸 = その特徴量 1 個の出現の割合
 - `feature_rank_line_match.png`: 上の図の下段 (対局) だけ
+- `feature_rank_line_teacher.png`: 上の図の上段 (教師) だけ
 
     .venv/bin/python experiments/009-data-scaling/feature_count/plot_rank_hist.py
 """
@@ -112,7 +113,10 @@ def plot_per_feature(panels: list, n: int, idx: tuple[int, ...], out: Path, heig
                     label=ref_label)  # fmt: skip
             ax.legend(loc="lower left", fontsize=8, frameon=True, facecolor=SURFACE, edgecolor=GRID)
         ax.set_yscale("log")
-        ylo, yhi = min(ylo, share[pos].min() / 3), max(yhi, share.max() * 3)
+        top = 10 ** np.ceil(
+            np.log10(share.max() * 1.2)
+        )  # 上端は 10 のべき (1 段だけの図でも 1% の目盛が出る)
+        ylo, yhi = min(ylo, share[pos].min() / 3), max(yhi, top)
         cutoffs(ax, n)
         zero = f", {int((~pos).sum()):,} features never occur (not drawn)" if (~pos).any() else ""
         ax.set_title(f"{title}  —  max {share.max():.2f}% (rank {int(share.argmax()) + 1}){zero}",
@@ -150,6 +154,7 @@ def main() -> None:
     plot_bins(panels, n)
     plot_per_feature(panels, n, (0, 1), FIG / "feature_rank_line.png", 7.5)
     plot_per_feature(panels, n, (1,), FIG / "feature_rank_line_match.png", 4.6)
+    plot_per_feature(panels, n, (0,), FIG / "feature_rank_line_teacher.png", 4.6)
 
 
 if __name__ == "__main__":
