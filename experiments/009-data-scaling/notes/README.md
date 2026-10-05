@@ -9,6 +9,7 @@
 | [bulletou-internals.md](bulletou-internals.md) | BulletOu `2a8e5ed` のソース調査: FT の factorizer・初期化・checkpoint 形式・nn.bin 形式・Ranger の挙動 |
 | [feature-counts.md](feature-counts.md) | 特徴量 (one-hot) の出現回数の統計: 教師データ側・対局側、分布間の距離 (TV / JS) |
 | [ablation.md](ablation.md) | アブレーション用ツール (`ablate/`) の仕様と検証、アブレーションの結果 |
+| [divergence.md](divergence.md) | **棋譜の分岐 (自動生成)**: アブレーションの各局が full-e16 の棋譜から何手目で分かれるか (`games_divergence.py`) |
 | [server-suzuki.md](server-suzuki.md) | 新サーバー suzuki の環境構築と計測値 (学習スループット・対局速度) |
 | [ratings.md](ratings.md) | 対局結果の一覧 (`match_queue.py` が自動で追記) と対局キューの使い方 |
 | [loss-eval.md](loss-eval.md) | loss の測定ツール (`loss_eval/`): nn.bin の CPU 順伝播 (やねうら王と同一), 固定標本 A〜D, 稀さでの層別, 検証 |
