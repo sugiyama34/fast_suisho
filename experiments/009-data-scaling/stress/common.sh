@@ -19,7 +19,7 @@ event() { printf '%(%F %T)T %s\n' -1 "$*" | tee -a "$EVENTS"; }
 BOOT_ID="$(cat /proc/sys/kernel/random/boot_id)"
 pgid_of() {
   local g b
-  read -r g b < "$PID_DIR/$1.pid" 2>/dev/null || return 0
+  { read -r g b < "$PID_DIR/$1.pid"; } 2>/dev/null || return 0
   [ "$b" = "$BOOT_ID" ] && echo "$g"
   return 0
 }
