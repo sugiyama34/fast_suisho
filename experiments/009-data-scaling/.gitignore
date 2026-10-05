@@ -1,0 +1,2 @@
+# train_supervised.py が作る offline のメトリクス記録
+metrics-*.jsonl

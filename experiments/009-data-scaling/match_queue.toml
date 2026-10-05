@@ -1,0 +1,1324 @@
+# experiment-009 の対局キュー (match_queue.py が 1 分ごとに読み直す。実行中に追記してよい)
+#
+# ジョブの書き方:
+#   [[job]]
+#   name     = "full-e8-vs-s11-300k"   # 一意。games/<name>/ に棋譜、ratings.md の「対局名」
+#   a        = "009-full/0008"          # Elo はこちらから見た値
+#   b        = "suisho11"
+#   nodes    = 300000
+#   pairs    = 1000                     # 開始局面は pairs ごとの等間隔ストライド (同じ pairs なら同じ局面集合)
+#   priority = 30                       # 小さいほど先。同じならファイル順。省略時 100
+#   workers  = 40                       # 省略時はキューの --workers (既定 40)
+#   note     = "..."                    # ratings.md の備考に入る (省略可)
+#
+# ネットの指定 (a / b):
+#   "suisho11"        : ~/suisho11
+#   "009-p50/0012"    : data/bulletou/checkpoints/ からの相対パス (絶対パスも可)。無ければ出来るまで待つ
+#   { ablate = "名前", ckpt = "009-full/0002", select = "select_features.py の引数", mode = "zero-specific" }
+#       : /mnt/nvme1/sugiyama/ablated/<名前>/nn.bin を必要になった時点で作る (作成済みなら再利用)。
+#         select の中の {ckpt} は checkpoint のパスに置き換わる。任意: verify = true (ablate.py --verify),
+#         extra = "--seed 1" (ablate.py への追加引数), label = "表記名",
+#         requires = ["/path/to/file"] (このファイルが存在するまで待つ。対局側カウントの完成待ちなど)
+#
+# 実行済み: games/<name>/queue_done.json。失敗: games/<name>/queue_failed.json (消せば再試行)。
+# 実行済みのジョブを消す必要はない (履歴として残す)。
+
+# 1. パイプライン確認: 学習 1 epoch 目 vs 水匠 11
+[[job]]
+name = "check-full-e1-vs-s11-300k"
+a = "009-full/0001"
+b = "suisho11"
+nodes = 300000
+pairs = 100
+priority = 10
+note = "パイプライン確認"
+
+# 2. パイプライン確認: 実サイズのネットでのアブレーション (教師出現回数の下位 5%, zero-specific)
+[[job]]
+name = "check-full-e2-zs-teach-f5-vs-full-e2-300k"
+a = { ablate = "full-e2-zs-teach-f5", ckpt = "009-full/0002", select = "--arm full --percent 5 --by features", mode = "zero-specific", verify = true }
+b = "009-full/0002"
+nodes = 300000
+pairs = 100
+priority = 20
+note = "パイプライン確認"
+
+# 3. (09-30 削除: FV_SCALE 16 固定の full-e8/12/16/20 vs 水匠 11。下の 6. に置き換え)
+
+# 4. 暫定アブレーション (2026-09-30 計画変更: full のアブレーションを最優先)。full-e12 を基準に zero-specific、
+#    教師の出現回数 (teach) と対局側の発火回数 (match) の 2 通りの順位で下位 5/10/20/30%。
+#    09-30 変更: 親との直接対局ではなく水匠 11@32 と対局 (ユーザー)。親は fv-full-e12 の格子 (同じ 400 ペア) と比べる
+[[job]]
+name = "full-e12-zs-teach-f5-vs-s11@32-300k"
+a = { ablate = "full-e12-zs-teach-f5", ckpt = "009-full/0012", select = "--arm full --percent 5 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", "/mnt/nvme1/sugiyama/fv/full.decided"] }
+a_fv = 40
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 25
+note = "暫定 (e12 基準, 水匠 11 と対局。親 full-e12 は同じ 400 ペアの FV_SCALE 格子)"
+
+[[job]]
+name = "full-e12-zs-teach-f10-vs-s11@32-300k"
+a = { ablate = "full-e12-zs-teach-f10", ckpt = "009-full/0012", select = "--arm full --percent 10 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", "/mnt/nvme1/sugiyama/fv/full.decided"] }
+a_fv = 40
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 25
+note = "暫定 (e12 基準, 水匠 11 と対局。親 full-e12 は同じ 400 ペアの FV_SCALE 格子)"
+
+[[job]]
+name = "full-e12-zs-teach-f20-vs-s11@32-300k"
+a = { ablate = "full-e12-zs-teach-f20", ckpt = "009-full/0012", select = "--arm full --percent 20 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", "/mnt/nvme1/sugiyama/fv/full.decided"] }
+a_fv = 40
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 25
+note = "暫定 (e12 基準, 水匠 11 と対局。親 full-e12 は同じ 400 ペアの FV_SCALE 格子)"
+
+[[job]]
+name = "full-e12-zs-teach-f30-vs-s11@32-300k"
+a = { ablate = "full-e12-zs-teach-f30", ckpt = "009-full/0012", select = "--arm full --percent 30 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", "/mnt/nvme1/sugiyama/fv/full.decided"] }
+a_fv = 40
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 25
+note = "暫定 (e12 基準, 水匠 11 と対局。親 full-e12 は同じ 400 ペアの FV_SCALE 格子)"
+
+[[job]]
+name = "full-e12-zs-match-f5-vs-s11@32-300k"
+a = { ablate = "full-e12-zs-match-f5", ckpt = "009-full/0012", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 5 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", "/mnt/nvme1/sugiyama/fv/full.decided"] }
+a_fv = 40
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 25
+note = "暫定 (e12 基準, 水匠 11 と対局。親 full-e12 は同じ 400 ペアの FV_SCALE 格子)"
+
+[[job]]
+name = "full-e12-zs-match-f10-vs-s11@32-300k"
+a = { ablate = "full-e12-zs-match-f10", ckpt = "009-full/0012", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 10 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", "/mnt/nvme1/sugiyama/fv/full.decided"] }
+a_fv = 40
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 25
+note = "暫定 (e12 基準, 水匠 11 と対局。親 full-e12 は同じ 400 ペアの FV_SCALE 格子)"
+
+[[job]]
+name = "full-e12-zs-match-f20-vs-s11@32-300k"
+a = { ablate = "full-e12-zs-match-f20", ckpt = "009-full/0012", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 20 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", "/mnt/nvme1/sugiyama/fv/full.decided"] }
+a_fv = 40
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 25
+note = "暫定 (e12 基準, 水匠 11 と対局。親 full-e12 は同じ 400 ペアの FV_SCALE 格子)"
+
+[[job]]
+name = "full-e12-zs-match-f30-vs-s11@32-300k"
+a = { ablate = "full-e12-zs-match-f30", ckpt = "009-full/0012", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 30 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific", requires = ["/mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", "/mnt/nvme1/sugiyama/fv/full.decided"] }
+a_fv = 40
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 25
+note = "暫定 (e12 基準, 水匠 11 と対局。親 full-e12 は同じ 400 ペアの FV_SCALE 格子)"
+
+
+# 5. FV_SCALE の調整 (2026-09-30 ユーザー決定)。水匠 11 は自己対局 (FV_SCALE=X 対 既定 16) で最良値を決める。
+#    学習ネットはその最良値の水匠 11 を相手に、FV_SCALE を振って決める (水匠 11 の結果が出てから追加)
+[[job]]
+name = "fv-s11@40-vs-s11@16-300k"
+a = "suisho11"
+a_fv = 40
+b = "suisho11"
+nodes = 300000
+pairs = 400
+priority = 5
+note = "FV_SCALE 調整 (水匠 11 自己対局)"
+
+[[job]]
+name = "fv-s11@24-vs-s11@16-300k"
+a = "suisho11"
+a_fv = 24
+b = "suisho11"
+nodes = 300000
+pairs = 400
+priority = 12
+note = "FV_SCALE 調整 (水匠 11 自己対局)"
+
+[[job]]
+name = "fv-s11@32-vs-s11@16-300k"
+a = "suisho11"
+a_fv = 32
+b = "suisho11"
+nodes = 300000
+pairs = 400
+priority = 12
+note = "FV_SCALE 調整 (水匠 11 自己対局)"
+
+[[job]]
+name = "fv-s11@48-vs-s11@16-300k"
+a = "suisho11"
+a_fv = 48
+b = "suisho11"
+nodes = 300000
+pairs = 400
+priority = 12
+note = "FV_SCALE 調整 (水匠 11 自己対局)"
+
+[[job]]
+name = "fv-s11@56-vs-s11@16-300k"
+a = "suisho11"
+a_fv = 56
+b = "suisho11"
+nodes = 300000
+pairs = 400
+priority = 12
+note = "FV_SCALE 調整 (水匠 11 自己対局)"
+
+
+# 6. 学習ネットの FV_SCALE 調整 (相手は水匠 11 の最良値 FV_SCALE=32: 上の自己対局で +77 Elo が最大)。
+#    格子 32/40/48/56/64。full-e5 は空いた CPU で先行、full-e8 が本命。e12 以降は e8 の最良値 ± 8 の 3 点を後で追加。
+#    e12 のアブレーションは FV_SCALE 確定 (/mnt/nvme1/sugiyama/fv/full.decided) まで待つ
+[[job]]
+name = "fv-full-e5@48-vs-s11@32-300k"
+a = "009-full/0005"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 8
+note = "FV_SCALE 調整 (学習ネット)"
+
+[[job]]
+name = "fv-full-e5@40-vs-s11@32-300k"
+a = "009-full/0005"
+a_fv = 40
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 8
+note = "FV_SCALE 調整 (学習ネット)"
+
+[[job]]
+name = "fv-full-e5@56-vs-s11@32-300k"
+a = "009-full/0005"
+a_fv = 56
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 8
+note = "FV_SCALE 調整 (学習ネット)"
+
+[[job]]
+name = "fv-full-e5@32-vs-s11@32-300k"
+a = "009-full/0005"
+a_fv = 32
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 8
+note = "FV_SCALE 調整 (学習ネット)"
+
+[[job]]
+name = "fv-full-e5@64-vs-s11@32-300k"
+a = "009-full/0005"
+a_fv = 64
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 8
+note = "FV_SCALE 調整 (学習ネット)"
+
+[[job]]
+name = "fv-full-e8@48-vs-s11@32-300k"
+a = "009-full/0008"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "FV_SCALE 調整 (学習ネット)"
+
+[[job]]
+name = "fv-full-e8@40-vs-s11@32-300k"
+a = "009-full/0008"
+a_fv = 40
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "FV_SCALE 調整 (学習ネット)"
+
+[[job]]
+name = "fv-full-e8@56-vs-s11@32-300k"
+a = "009-full/0008"
+a_fv = 56
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "FV_SCALE 調整 (学習ネット)"
+
+[[job]]
+name = "fv-full-e8@32-vs-s11@32-300k"
+a = "009-full/0008"
+a_fv = 32
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "FV_SCALE 調整 (学習ネット)"
+
+[[job]]
+name = "fv-full-e8@64-vs-s11@32-300k"
+a = "009-full/0008"
+a_fv = 64
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "FV_SCALE 調整 (学習ネット)"
+
+
+# 7. fv_decide.py が自動追加 (2026-09-30 23:19:11): full-e8 の格子で最良の FV_SCALE = 40 (Elo {32: -138.99, 40: -132.94, 48: -140.01, 56: -149.78, 64: -185.11})。
+#    e12/e16/e20 は最良値 ± 8 の 3 点
+[[job]]
+name = "fv-full-e12@40-vs-s11@32-300k"
+a = "009-full/0012"
+a_fv = 40
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 20
+note = "FV_SCALE 調整 (学習ネット, e8 の最良値 ± 8)"
+
+[[job]]
+name = "fv-full-e12@32-vs-s11@32-300k"
+a = "009-full/0012"
+a_fv = 32
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 20
+note = "FV_SCALE 調整 (学習ネット, e8 の最良値 ± 8)"
+
+[[job]]
+name = "fv-full-e12@48-vs-s11@32-300k"
+a = "009-full/0012"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 20
+note = "FV_SCALE 調整 (学習ネット, e8 の最良値 ± 8)"
+
+[[job]]
+name = "fv-full-e16@40-vs-s11@32-300k"
+a = "009-full/0016"
+a_fv = 40
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "FV_SCALE 調整 (学習ネット, e8 の最良値 ± 8)"
+
+[[job]]
+name = "fv-full-e16@32-vs-s11@32-300k"
+a = "009-full/0016"
+a_fv = 32
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "FV_SCALE 調整 (学習ネット, e8 の最良値 ± 8)"
+
+[[job]]
+name = "fv-full-e16@48-vs-s11@32-300k"
+a = "009-full/0016"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "FV_SCALE 調整 (学習ネット, e8 の最良値 ± 8)"
+
+[[job]]
+name = "fv-full-e20@40-vs-s11@32-300k"
+a = "009-full/0020"
+a_fv = 40
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "FV_SCALE 調整 (学習ネット, e8 の最良値 ± 8)"
+
+[[job]]
+name = "fv-full-e20@32-vs-s11@32-300k"
+a = "009-full/0020"
+a_fv = 32
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+workers = 56
+priority = 30
+note = "FV_SCALE 調整 (学習ネット, e8 の最良値 ± 8)"
+
+[[job]]
+name = "fv-full-e20@48-vs-s11@32-300k"
+a = "009-full/0020"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+workers = 56
+priority = 30
+note = "FV_SCALE 調整 (学習ネット, e8 の最良値 ± 8)"
+
+
+# 10-01 追加 (Claude): e12/e16 で FV_SCALE 48 (格子の上端) が最良だったので、e16/e20 は 56 も測る。
+# pipeline.py の最良 (epoch, FV_SCALE) の選択はこの 2 本も待つ
+[[job]]
+name = "fv-full-e16@56-vs-s11@32-300k"
+a = "009-full/0016"
+a_fv = 56
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "FV_SCALE 調整 (学習ネット, 上端の外側)"
+
+[[job]]
+name = "fv-full-e20@56-vs-s11@32-300k"
+a = "009-full/0020"
+a_fv = 56
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+workers = 56
+priority = 30
+note = "FV_SCALE 調整 (学習ネット, 上端の外側)"
+
+# 10-01 Claude: アブレーション 24 本は 667 ペアに変更 (開始局面のストライド 45 = 15 の倍数なので full の 2,000 ペアの部分集合。
+#   W=56 の実測 1,650〜1,900 ペア/時では 1,000 ペアだと締切の余裕が無いため)
+# 8. pipeline.py が追加: full 最良 e16 @ FV_SCALE 48 の最終アブレーション等
+[[job]]
+name = "final-full-e16-zs-teach-f5@48-vs-s11@32-300k"
+a = { ablate = "full-e16-zs-teach-f5", ckpt = "009-full/0016", select = "--arm full --percent 5 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 5
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-zs-teach-f10@48-vs-s11@32-300k"
+a = { ablate = "full-e16-zs-teach-f10", ckpt = "009-full/0016", select = "--arm full --percent 10 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 5
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-zs-teach-f20@48-vs-s11@32-300k"
+a = { ablate = "full-e16-zs-teach-f20", ckpt = "009-full/0016", select = "--arm full --percent 20 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 5
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-zs-teach-f30@48-vs-s11@32-300k"
+a = { ablate = "full-e16-zs-teach-f30", ckpt = "009-full/0016", select = "--arm full --percent 30 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 5
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-zs-teach-f50@48-vs-s11@32-300k"
+a = { ablate = "full-e16-zs-teach-f50", ckpt = "009-full/0016", select = "--arm full --percent 50 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 5
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-zs-teach-f75@48-vs-s11@32-300k"
+a = { ablate = "full-e16-zs-teach-f75", ckpt = "009-full/0016", select = "--arm full --percent 75 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 5
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-zs-match-f5@48-vs-s11@32-300k"
+a = { ablate = "full-e16-zs-match-f5", ckpt = "009-full/0016", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 5 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 5
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-zs-match-f10@48-vs-s11@32-300k"
+a = { ablate = "full-e16-zs-match-f10", ckpt = "009-full/0016", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 10 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 5
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-zs-match-f20@48-vs-s11@32-300k"
+a = { ablate = "full-e16-zs-match-f20", ckpt = "009-full/0016", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 20 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 5
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-zs-match-f30@48-vs-s11@32-300k"
+a = { ablate = "full-e16-zs-match-f30", ckpt = "009-full/0016", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 30 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 5
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-zs-match-f50@48-vs-s11@32-300k"
+a = { ablate = "full-e16-zs-match-f50", ckpt = "009-full/0016", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 50 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 5
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-zs-match-f75@48-vs-s11@32-300k"
+a = { ablate = "full-e16-zs-match-f75", ckpt = "009-full/0016", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 75 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "zero-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 5
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-rs-teach-f5@48-vs-s11@32-300k"
+a = { ablate = "full-e16-rs-teach-f5", ckpt = "009-full/0016", select = "--arm full --percent 5 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "random-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 6
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-rs-teach-f10@48-vs-s11@32-300k"
+a = { ablate = "full-e16-rs-teach-f10", ckpt = "009-full/0016", select = "--arm full --percent 10 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "random-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 6
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-rs-teach-f20@48-vs-s11@32-300k"
+a = { ablate = "full-e16-rs-teach-f20", ckpt = "009-full/0016", select = "--arm full --percent 20 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "random-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 6
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-rs-teach-f30@48-vs-s11@32-300k"
+a = { ablate = "full-e16-rs-teach-f30", ckpt = "009-full/0016", select = "--arm full --percent 30 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "random-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 6
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-rs-teach-f50@48-vs-s11@32-300k"
+a = { ablate = "full-e16-rs-teach-f50", ckpt = "009-full/0016", select = "--arm full --percent 50 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "random-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 6
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-rs-teach-f75@48-vs-s11@32-300k"
+a = { ablate = "full-e16-rs-teach-f75", ckpt = "009-full/0016", select = "--arm full --percent 75 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "random-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 6
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-rs-match-f5@48-vs-s11@32-300k"
+a = { ablate = "full-e16-rs-match-f5", ckpt = "009-full/0016", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 5 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "random-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 6
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-rs-match-f10@48-vs-s11@32-300k"
+a = { ablate = "full-e16-rs-match-f10", ckpt = "009-full/0016", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 10 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "random-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 6
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-rs-match-f20@48-vs-s11@32-300k"
+a = { ablate = "full-e16-rs-match-f20", ckpt = "009-full/0016", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 20 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "random-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 6
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-rs-match-f30@48-vs-s11@32-300k"
+a = { ablate = "full-e16-rs-match-f30", ckpt = "009-full/0016", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 30 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "random-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 6
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-rs-match-f50@48-vs-s11@32-300k"
+a = { ablate = "full-e16-rs-match-f50", ckpt = "009-full/0016", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 50 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "random-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 6
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16-rs-match-f75@48-vs-s11@32-300k"
+a = { ablate = "full-e16-rs-match-f75", ckpt = "009-full/0016", select = "--counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy --percent 75 --by features --report-counts /mnt/nvme1/sugiyama/feature_counts/search_s11_2000_300k.npy", mode = "random-specific" }
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 667
+priority = 6
+workers = 56
+note = "最終アブレーション (親と同じ FV_SCALE, 水匠 11 と対局)"
+
+[[job]]
+name = "final-full-e16@48-vs-s11@32-300k-2000p"
+a = "009-full/0016"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 2000
+priority = 4
+workers = 56
+note = "基準 full (アブレーション・データ削減の共通の基準)"
+
+
+# 9. pipeline.py が追加: arm (p50/p10/p90/p70/p80) の対局
+[[job]]
+name = "arm-p50-sel-e2@48-vs-s11@32-300k"
+a = "009-p50/0002"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 22
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p50-sel-e4@48-vs-s11@32-300k"
+a = "009-p50/0004"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 22
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p50-sel-e6@48-vs-s11@32-300k"
+a = "009-p50/0006"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 22
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p50-sel-e8@48-vs-s11@32-300k"
+a = "009-p50/0008"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 22
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p50-sel-e10@48-vs-s11@32-300k"
+a = "009-p50/0010"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 22
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p10-sel-e1@48-vs-s11@32-300k"
+a = "009-p10/0001"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 22
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p10-sel-e2@48-vs-s11@32-300k"
+a = "009-p10/0002"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 22
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p10-sel-e3@48-vs-s11@32-300k"
+a = "009-p10/0003"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 22
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p10-sel-e4@48-vs-s11@32-300k"
+a = "009-p10/0004"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 18
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p10-sel-e6@48-vs-s11@32-300k"
+a = "009-p10/0006"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 18
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p90-sel-e2@48-vs-s11@32-300k"
+a = "009-p90/0002"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 18
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p90-sel-e4@48-vs-s11@32-300k"
+a = "009-p90/0004"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 18
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p90-sel-e6@48-vs-s11@32-300k"
+a = "009-p90/0006"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 18
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p90-sel-e8@48-vs-s11@32-300k"
+a = "009-p90/0008"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 18
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p90-sel-e10@48-vs-s11@32-300k"
+a = "009-p90/0010"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 18
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p70-sel-e2@48-vs-s11@32-300k"
+a = "009-p70/0002"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 18
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p70-sel-e4@48-vs-s11@32-300k"
+a = "009-p70/0004"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 18
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p70-sel-e6@48-vs-s11@32-300k"
+a = "009-p70/0006"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 18
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p70-sel-e8@48-vs-s11@32-300k"
+a = "009-p70/0008"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 18
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p70-sel-e10@48-vs-s11@32-300k"
+a = "009-p70/0010"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 22
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p80-sel-e2@48-vs-s11@32-300k"
+a = "009-p80/0002"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 22
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p80-sel-e4@48-vs-s11@32-300k"
+a = "009-p80/0004"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 22
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p80-sel-e6@48-vs-s11@32-300k"
+a = "009-p80/0006"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 22
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p80-sel-e8@48-vs-s11@32-300k"
+a = "009-p80/0008"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 22
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p80-sel-e10@48-vs-s11@32-300k"
+a = "009-p80/0010"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 22
+note = "arm の最良 epoch の選択"
+
+
+# pipeline.py が追加: p50 の最良 epoch = e10
+[[job]]
+name = "arm-p50-best-e10@48-vs-s11@32-300k-2000p"
+a = "009-p50/0010"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 2000
+priority = 12
+workers = 22
+note = "p50 の最良 epoch (基準 full と同じ 2,000 ペア)"
+
+
+# pipeline.py が追加: p10 の最良 epoch = e4
+[[job]]
+name = "arm-p10-best-e4@48-vs-s11@32-300k-2000p"
+a = "009-p10/0004"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 2000
+priority = 12
+workers = 62
+note = "p10 の最良 epoch (基準 full と同じ 2,000 ペア)"
+
+
+# 手動で追加 (10-02): arm p3 の候補 epoch (優先度 20 = 7 arm の後)
+[[job]]
+name = "arm-p3-sel-e1@48-vs-s11@32-300k"
+a = "009-p3/0001"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 20
+workers = 62
+note = "p3 (手動で追加) の最良 epoch の選択。7 arm の後"
+
+[[job]]
+name = "arm-p3-sel-e2@48-vs-s11@32-300k"
+a = "009-p3/0002"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 20
+workers = 62
+note = "p3 (手動で追加) の最良 epoch の選択。7 arm の後"
+
+[[job]]
+name = "arm-p3-sel-e3@48-vs-s11@32-300k"
+a = "009-p3/0003"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 20
+workers = 62
+note = "p3 (手動で追加) の最良 epoch の選択。7 arm の後"
+
+[[job]]
+name = "arm-p3-sel-e4@48-vs-s11@32-300k"
+a = "009-p3/0004"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 20
+workers = 62
+note = "p3 (手動で追加) の最良 epoch の選択。7 arm の後"
+
+
+# pipeline.py が追加: p90 の最良 epoch = e10
+[[job]]
+name = "arm-p90-best-e10@48-vs-s11@32-300k-2000p"
+a = "009-p90/0010"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 2000
+priority = 12
+workers = 62
+note = "p90 の最良 epoch (基準 full と同じ 2,000 ペア)"
+
+
+# pipeline.py が追加: p70 の最良 epoch = e10
+[[job]]
+name = "arm-p70-best-e10@48-vs-s11@32-300k-2000p"
+a = "009-p70/0010"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 2000
+priority = 12
+workers = 62
+note = "p70 の最良 epoch (基準 full と同じ 2,000 ペア)"
+
+
+# pipeline.py が追加: p80 の最良 epoch = e8
+[[job]]
+name = "arm-p80-best-e8@48-vs-s11@32-300k-2000p"
+a = "009-p80/0008"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 2000
+priority = 12
+workers = 62
+note = "p80 の最良 epoch (基準 full と同じ 2,000 ペア)"
+
+
+# 10. pipeline.py が追加: arm p60/p30 の対局
+[[job]]
+name = "arm-p60-sel-e2@48-vs-s11@32-300k"
+a = "009-p60/0002"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 56
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p60-sel-e4@48-vs-s11@32-300k"
+a = "009-p60/0004"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 62
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p60-sel-e6@48-vs-s11@32-300k"
+a = "009-p60/0006"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 62
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p60-sel-e8@48-vs-s11@32-300k"
+a = "009-p60/0008"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 62
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p60-sel-e10@48-vs-s11@32-300k"
+a = "009-p60/0010"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 62
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p30-sel-e2@48-vs-s11@32-300k"
+a = "009-p30/0002"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 62
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p30-sel-e4@48-vs-s11@32-300k"
+a = "009-p30/0004"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 62
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p30-sel-e6@48-vs-s11@32-300k"
+a = "009-p30/0006"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 62
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p30-sel-e8@48-vs-s11@32-300k"
+a = "009-p30/0008"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 62
+note = "arm の最良 epoch の選択"
+
+[[job]]
+name = "arm-p30-sel-e10@48-vs-s11@32-300k"
+a = "009-p30/0010"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 300
+priority = 10
+workers = 62
+note = "arm の最良 epoch の選択"
+
+
+# pipeline.py が追加: p60 の最良 epoch = e10
+[[job]]
+name = "arm-p60-best-e10@48-vs-s11@32-300k-2000p"
+a = "009-p60/0010"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 2000
+priority = 12
+workers = 62
+note = "p60 の最良 epoch (基準 full と同じ 2,000 ペア)"
+
+
+# pipeline.py が追加: p30 の最良 epoch = e8
+[[job]]
+name = "arm-p30-best-e8@48-vs-s11@32-300k-2000p"
+a = "009-p30/0008"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 2000
+priority = 12
+workers = 62
+note = "p30 の最良 epoch (基準 full と同じ 2,000 ペア)"
+
+
+# p3_followup.py が追加: p3 の最良 epoch = e3
+[[job]]
+name = "arm-p3-best-e3@48-vs-s11@32-300k-2000p"
+a = "009-p3/0003"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 2000
+priority = 20
+workers = 62
+note = "p3 の最良 epoch (基準 full と同じ 2,000 ペア)"
+

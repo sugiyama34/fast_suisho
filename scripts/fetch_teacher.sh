@@ -11,6 +11,10 @@
 # 使い方:
 #   bash scripts/fetch_teacher.sh            # 取得 (サイズ一致のファイルはスキップ, 再開可)
 #   bash scripts/fetch_teacher.sh --verify   # 取得後に sha256 を全ファイル検証 (587GB を読むので時間がかかる)
+#   SOJO_ORDER="001 011 ..." bash scripts/fetch_teacher.sh   # 取得順の指定 (下記)
+#
+# 大容量ディスクに置く場合は data/teacher/sojo を先にシンボリックリンクにしておく
+# (例: ln -s /mnt/D/<user>/teacher/sojo data/teacher/sojo)。スクリプトはリンク先に書く。
 #
 # sha256 は HF の LFS oid (= ファイル全体の sha256) を scripts/teacher_sojo.sha256 に固定したもの。
 # 元は experiment-005/006 で使った data/teacher/sojo/download.sh (git 管理外) を移植した。
@@ -68,7 +72,14 @@ export SOJO_BASE SOJO_DIR
 echo "[start] $(date)"
 status=0
 fetch "$FG_URL" "$FG_DIR/floodgate.hcpe" "$FG_SIZE" || status=1
-seq -f '%03g' 1 30 | xargs -P "$PARALLEL" -I{} bash -c 'fetch_sojo {}' || status=1
+# SOJO_ORDER (空白区切りのファイル番号) で取得順を変えられる。experiment-009 は
+# 小さいサブセットから揃うよう NESTED 順で取る (experiments/009-data-scaling/subsets.py):
+#   SOJO_ORDER="001 011 021 006 016 026 003 013 023 008 018 028 004 014 024 002 012 022 009 019 029 005 015 025 007 017 027 010 020 030"
+if [ -n "${SOJO_ORDER:-}" ]; then
+  printf '%s\n' $SOJO_ORDER
+else
+  seq -f '%03g' 1 30
+fi | xargs -P "$PARALLEL" -I{} bash -c 'fetch_sojo {}' || status=1
 echo "[end] $(date)"
 
 if [ "$VERIFY" -eq 1 ]; then

@@ -159,15 +159,17 @@ def play_game(
     cand_is_black: bool,
     movetime_ms: int,
     max_plies: int,
+    moves_out: list[str] | None = None,
 ) -> tuple[float, str, int]:
     """1 局対局し (候補側得点 1/0.5/0, 終局理由, 手数) を返す。
 
     start_sfen は 24 手目 (後手番) の局面なので、初手を指すのは後手側。
+    moves_out にリストを渡すと、指し手 (USI) がそこに追記される (棋譜の記録用)。
     """
     for e in (cand, base):
         e.newgame()
     board = cshogi.Board(sfen=start_sfen)
-    moves: list[str] = []
+    moves: list[str] = [] if moves_out is None else moves_out
     # 千日手判定: 公式ルール通り「同一局面 4 回目」で成立とする。cshogi の
     # is_draw() は初回の再訪で REPETITION_* を返すため、それをそのまま終局に
     # 使わず、zobrist hash の出現回数を数えて 4 回目に達したときだけ

@@ -1,0 +1,24 @@
+# experiment-009: 固定した奏乗の標本で学習済みネットの loss を測るツール (CPU のみ)。
+# 特徴抽出・layer stack の選択・floodgate の標本抽出と loss 計算は BulletOu 2a8e5ed の
+# bulletou_lib をそのまま呼ぶ (feature_count/ と同じく path 参照, CUDA feature なし)。
+# Cargo.lock は feature_count/ のものを種にしてある。
+[package]
+name = "loss_eval"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# 上位 (fast_suisho) にも BulletOu にも属さない単独 workspace
+[workspace]
+
+[dependencies]
+bulletou_lib = { path = "../../../data/bulletou/BulletOu/crates/bulletou_lib", default-features = false }
+clap = { version = "4.5", features = ["derive"] }
+memmap2 = "0.9"
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+debug = false
