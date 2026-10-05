@@ -115,6 +115,19 @@
 - loss (教師の一様標本での差) は X とともに単調に増え、Elo が動かない 30% でも検出できる (+0.0004〜+0.0007)。
   75% で +0.009〜+0.013 (full-e16 の loss 0.0329 の 26〜39%) ([notes/ablation.md](notes/ablation.md))
 
+### 棋譜の分岐 (探索のカオス性)
+
+各局を同じ開始局面・同じ先後の full-e16 の局と比べ、最初に違う手の位置を数えた (詳細と 24 ネットの表は
+[notes/divergence.md](notes/divergence.md))。
+
+![divergence summary](figures/divergence_summary.png)
+
+- 下位 5% のアブレーションでも約 90% の局で棋譜が変わる (分岐は中央値 86 手目 = 局の約 53%)。下位 10% で 98%
+  (59 手目, 30%)、下位 20% 以上ではほぼ全局が開始直後 (27〜39 手目, 局の 2〜13%) に分かれる
+- 最初に違う手は全局でアブレーションした側の手。4 設定 (順位 × モード) の差はほとんどない
+- 棋譜はほぼ全部変わるのに、Elo は下位 30% まで変わらない。ペアの得点が変わるのは 667 ペア中 約 170〜430 で、
+  両方向に打ち消し合う
+
 ### 特徴量の出現の偏り
 
 横軸はどちらも教師データでの出現順位 (1 = 最多)。点線は最終アブレーションの「下位 X%」の境界。
@@ -163,7 +176,7 @@
 10. **アブレーションは 667 ペア**: arm (2,000 ペア) より区間が広い (各 ±15〜30 Elo)
 11. **探索のカオス性**: 下位 5% のアブレーションでも 1,334 局中 約 90% で棋譜が親と変わる (分岐は中央値で 86 手目)。
     下位 10% で 98% (59 手目)、20% 以上ではほぼ全局が開始直後 (27〜39 手目) に分かれる
-    ([notes/ablation.md](notes/ablation.md))。ペアの得点が変わるのは 667 ペア中 約 170〜430 ペアで、対応のある比較による
+    ([notes/divergence.md](notes/divergence.md))。ペアの得点が変わるのは 667 ペア中 約 170〜430 ペアで、対応のある比較による
     誤差の減り方は想定より小さい
 12. ネット・アーキテクチャ・トレーナは 1 種類 (SFNN_halfka2_1024_7_64_k3k3, BulletOu)
 
@@ -174,7 +187,7 @@
 - 全工程の自動化: `pipeline.py` (状態 `/mnt/nvme1/sugiyama/pipeline/state.json`)、対局キュー `match_queue.py` +
   `match_queue.toml`、対局 `match_nodes.py`、結果の表と図 `plot_results.py`
 - アブレーション: `ablate/select_features.py` → `ablate/ablate.py`。出現回数: `feature_count/` (教師), `search_featcount/` (対局)。
-  図: `feature_count/plot_rank_hist.py`
+  図: `feature_count/plot_rank_hist.py`。棋譜の分岐: `games_divergence.py`
 - 対局の全棋譜 (games.jsonl) と集計 (summary.json) は `games/<job>/`、一覧は [notes/ratings.md](notes/ratings.md)
 - 電力の制約 (ブレーカー): GPU と CPU を同時に使うときは GPU 3 枚 + 32 コアまで ([notes/server-suzuki.md](notes/server-suzuki.md))
 
