@@ -36,6 +36,7 @@ from plot_results import (
 )
 
 PARENT = "final-full-e16@48-vs-s11@32-300k-2000p"
+REPLAY = "fv-full-e16@48-vs-s11@32-300k"  # 同じネット・同じ FV_SCALE を別のジョブとして対局 (FV_SCALE 格子, 400 ペア, 10-01 06:43〜)
 PCTS = (5, 10, 20, 30, 50, 75)
 OPENING_PLY = 24  # 互角局面集の局面は 24 手目から指す (sfen の手数)
 NOTE = HERE / "notes" / "divergence.md"
@@ -168,7 +169,7 @@ def plot_all(res: dict) -> None:
     print(f"wrote {out}")
 
 
-def write_note(res: dict, parent_len: float) -> None:
+def write_note(res: dict, parent_len: float, replay: tuple[int, int]) -> None:
     lines = [
         "# 棋譜はどこで分かれるか (自動生成)\n",
         "`games_divergence.py` が作る (手で編集しない)。最終アブレーション (full-e16 @ FV_SCALE 48 の 24 ネット, 各 667 ペア = "
@@ -176,6 +177,9 @@ def write_note(res: dict, parent_len: float) -> None:
         "最初に違う手の位置を数えた。\n",
         "- **手目**: 開始局面 (24 手目) からの通しの手数。**進行度**: 分岐までに指した手数 ÷ full-e16 の局の手数 "
         f"(どちらも開始局面から数える。full-e16 の局は中央値 {parent_len:.0f} 手 = {parent_len + OPENING_PLY - 1:.0f} 手目で終局)",
+        f"- **対局の再現性 (対照)**: full-e16 そのものを別のジョブとして約 4 時間前に対局した {replay[1]} 局 (FV_SCALE 格子の対局, "
+        f"開始局面は 2,000 ペアの部分集合) は、{replay[0]} 局が最終の対局と**同じ棋譜**だった。"
+        "アブレーションしなければ棋譜は変わらないので、下の表の変化はすべてアブレーションによる",
         "- 対局は決定的なので、**最初に違う手は 24 ネット・全局でアブレーションした側の手**だった",
         "- **得点が変わったペア** ([results.md](results.md) と同じ定義): ペアの得点 (先後 2 局の合計) が full-e16 と違うペアの数。"
         "棋譜が変わっても得点は変わらないことが多い\n",
@@ -229,7 +233,12 @@ def main() -> None:
         plot_one(s, res[(rank, mode, int(f[1:]))])
     plot_summary(res, parent_len + OPENING_PLY - 1)
     plot_all(res)
-    write_note(res, parent_len)
+    rp = load(REPLAY)
+    replay = (
+        sum(1 for k, r in rp.items() if k in parent and r["moves"] == parent[k]["moves"]),
+        len(rp),
+    )
+    write_note(res, parent_len, replay)
 
 
 if __name__ == "__main__":
