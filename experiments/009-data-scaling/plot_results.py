@@ -421,7 +421,7 @@ def write_note(abl_rows: list[dict], eq: dict | None) -> None:
     if abl_rows:
         lines += [
             "![all settings](../figures/ablation_merged.png)\n",
-            f"| 順位 | モード | 下位 % | Elo vs 水匠 11 | 95% CI | 同じ局面での {parent_label} | 局面数 | 棋譜が変わったペア |",
+            f"| 順位 | モード | 下位 % | Elo vs 水匠 11 | 95% CI | 同じ局面での {parent_label} | 局面数 | 得点が変わったペア |",
             "| --- | --- | --- | --- | --- | --- | --- | --- |",
         ]
         for r in abl_rows:
