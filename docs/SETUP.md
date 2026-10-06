@@ -65,9 +65,10 @@ bash scripts/install-hooks.sh   # git の pre-commit hook を有効化
 - **CUDA toolkit の版**: `nvidia-smi` 右上の「CUDA Version」(ドライバが対応する上限) 以下の
   toolkit を使う。`nvcc` は PATH に無いことが多いので `/usr/local/cuda/bin` を足す
   (kajiki では toolkit 13.1 / driver 590.48 で問題なし)
-- **WandB**: API キーは `wandb login` ではなく環境変数で渡す運用 (`~/.netrc` への平文保存を
-  避けるため)。詳細は `docs/wandb-guide.md`。**キーはリポジトリにも `~/.claude/settings.json`
-  にも書かない** (2026-09-28 ユーザー方針)。Claude Code を起動するシェルでだけ export する。
+- **WandB**: **2026-10-06 からはユーザーが `uv run wandb login` を実行し、キーを `~/.netrc` (権限 600) に置く運用**
+  (ユーザー決定: 環境変数には置かない)。experiment-011 の supervisor は `~/.netrc` の資格情報を検出して online で記録する。
+  エージェントは `wandb login` を実行しない。**キーはリポジトリにも `~/.claude/settings.json` にも書かない**。
+  詳細と run の命名規約は `docs/wandb-guide.md` §3。以下は 2026-09-28〜10-05 の旧運用 (環境変数で渡す) の記録。
   先頭に半角スペースを付けると bash の履歴に残らない (Ubuntu 既定の `HISTCONTROL=ignoreboth`):
 
 ```sh
