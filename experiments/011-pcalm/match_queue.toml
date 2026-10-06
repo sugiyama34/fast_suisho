@@ -1,0 +1,77 @@
+# experiment-011 の対局キュー (match_queue.py が 1 分ごとに読み直す)。書き方:
+# [[job]]
+# name = "..."                 # games/<name>/ に棋譜と summary.json
+# a = "011-s-pcalm-T4-eta0.2/0001"   # checkpoint (data/bulletou/checkpoints/ からの相対) か "suisho11"
+# a_fv = 48                    # FV_SCALE (省略時 16)
+# b = "011-s-bp-lr1/0001"
+# b_fv = 48
+# nodes = 300000
+# pairs = 300
+# priority = 10                # 小さいほど先
+# engine = "<path>"            # 省略時は experiment-009 と同じバイナリ (~/engines/009-finny-avx2/)
+#
+# M2 の調整対局 (2026-10-06 Claude 決定): 相手は bp-recipe (= s-bp-lr1) の e1、両方 FV_SCALE 48、300 ペア、300k ノード。
+# エンジンは kajiki のビルド (a5f519d2, V9.60 + finny.patch, AVX2)。調整対局は 1 つの系列の中の相対比較なので、
+# 009 のバイナリ (423b6b1c, suzuki から複製待ち) が届くかどうかによらず、この系列はすべて kajiki のビルドで揃える。
+# 本番 (M4) の対局は 009 のバイナリを使う
+
+[[job]]
+name = "tune-s-bp-lr1-rot-e1@48-vs-bp-recipe-e1@48-300k"
+a = "011-s-bp-lr1-rot/0001"
+a_fv = 48
+b = "011-s-bp-lr1/0001"
+b_fv = 48
+nodes = 300000
+pairs = 300
+priority = 10
+engine = "~/engines/yane-9133c527-finny-avx2/YaneuraOu-by-gcc"
+note = "M2: BP の複製 (教師の順序を回転)。ノイズの目安"
+
+[[job]]
+name = "tune-s-bp-lr0.5-e1@48-vs-bp-recipe-e1@48-300k"
+a = "011-s-bp-lr0.5/0001"
+a_fv = 48
+b = "011-s-bp-lr1/0001"
+b_fv = 48
+nodes = 300000
+pairs = 300
+priority = 20
+engine = "~/engines/yane-9133c527-finny-avx2/YaneuraOu-by-gcc"
+note = "M2: BP の LR 調整"
+
+[[job]]
+name = "tune-s-bp-lr0.7-e1@48-vs-bp-recipe-e1@48-300k"
+a = "011-s-bp-lr0.7/0001"
+a_fv = 48
+b = "011-s-bp-lr1/0001"
+b_fv = 48
+nodes = 300000
+pairs = 300
+priority = 20
+engine = "~/engines/yane-9133c527-finny-avx2/YaneuraOu-by-gcc"
+note = "M2: BP の LR 調整"
+
+[[job]]
+name = "tune-s-bp-lr1.4-e1@48-vs-bp-recipe-e1@48-300k"
+a = "011-s-bp-lr1.4/0001"
+a_fv = 48
+b = "011-s-bp-lr1/0001"
+b_fv = 48
+nodes = 300000
+pairs = 300
+priority = 20
+engine = "~/engines/yane-9133c527-finny-avx2/YaneuraOu-by-gcc"
+note = "M2: BP の LR 調整"
+
+[[job]]
+name = "tune-s-bp-lr2-e1@48-vs-bp-recipe-e1@48-300k"
+a = "011-s-bp-lr2/0001"
+a_fv = 48
+b = "011-s-bp-lr1/0001"
+b_fv = 48
+nodes = 300000
+pairs = 300
+priority = 20
+engine = "~/engines/yane-9133c527-finny-avx2/YaneuraOu-by-gcc"
+note = "M2: BP の LR 調整"
+

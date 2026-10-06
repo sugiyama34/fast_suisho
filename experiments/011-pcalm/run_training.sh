@@ -9,7 +9,7 @@
 #   <gpu>: CUDA_VISIBLE_DEVICES の値。kajiki では MIG device 2 / 3 の UUID だけ (ALLOWED_GPUS で強制)
 #   epochs: 省略時は arm の既定 (小規模 1, 本番 20)。--max-epochs は resume シグネチャに含まれないので延長できる
 #
-#   SMOKE=1: sb=2 で動作確認 (出力 011-<arm>-smoke/)。BENCH=1: sb=16 × 1 epoch (出力 011-<arm>-bench/)
+#   SMOKE=1: sb=2 で動作確認 (出力 011-<arm>-smoke/)。BENCH=1: sb=16 (BENCH_SB で変更) × 1 epoch (出力 011-<arm>-bench/)
 #   OUT_TAG=<tag>: 出力とログ名の接尾辞
 #   BIN_BP / BIN_PCALM: トレーナの場所。bp は改造前の BulletOu、pcalm / pc は改造版 (BulletOu-pcalm)
 set -euo pipefail
@@ -24,7 +24,7 @@ EPOCHS="${3:-$EPOCHS_DEFAULT}"
 SB=108
 OUT="011-$ARM"
 if [ "${SMOKE:-0}" = 1 ]; then SB=2; OUT="011-$ARM-smoke"; fi
-if [ "${BENCH:-0}" = 1 ]; then SB=16; EPOCHS=1; OUT="011-$ARM-bench"; fi
+if [ "${BENCH:-0}" = 1 ]; then SB="${BENCH_SB:-16}"; EPOCHS=1; OUT="011-$ARM-bench"; fi
 OUT="$OUT${OUT_TAG:+-$OUT_TAG}"
 BIN_BP="${BIN_BP:-$REPO/data/bulletou/BulletOu/target/release/examples/bulletou}"
 BIN_PCALM="${BIN_PCALM:-$REPO/data/bulletou/BulletOu-pcalm/target/release/examples/bulletou}"
