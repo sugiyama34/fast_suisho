@@ -30,7 +30,7 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "experiments" / "005-bulletou-sojo"))
 sys.path.insert(0, str(HERE))
 
-from arms import POS_PER_FILE, parse  # noqa: E402
+from arms import POS_PER_FILE, display_name, parse  # noqa: E402
 from wandb_sync import read_rows  # noqa: E402  (005 の CSV パーサを再利用)
 
 from tools.wandb_utils import init_run  # noqa: E402
@@ -104,7 +104,11 @@ def main() -> None:
     }
 
     with init_run(
-        EXPERIMENT, config=config, tags=[args.arm, arm.method, arm.scale], smoke=args.smoke
+        EXPERIMENT,
+        config={**config, "display_name": display_name(arm)},
+        tags=[args.arm, arm.method, arm.scale],
+        smoke=args.smoke,
+        display_name=display_name(arm) + (" (smoke)" if args.smoke else ""),
     ) as run:
         print(f"wandb run: {getattr(run.run, 'url', None) or run.run.name}", flush=True)
         env = {**os.environ, "SMOKE": "1"} if args.smoke else None

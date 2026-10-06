@@ -102,6 +102,39 @@ class Arm:
         return ",".join(str(SOJO / f"dlsuisho_unique_{n:03d}.psv") for n in self.files)
 
 
+def _num(x: float) -> str:
+    return f"{x:g}"
+
+
+def display_name(arm: Arm) -> str:
+    """W&B の run 名 (人が読む名前)。規模と手法は書き下し、既定値と違う設定だけを付ける。
+
+    例: ``011 small BP``, ``011 small BP lr×0.5``, ``011 small BP replicate``, ``011 small PC-ALM T=4``,
+    ``011 small PC-ALM T=4 α=1.5 η×0.75``, ``011 small PC T=16``, ``011 full PC-ALM T=4``。
+    全設定は W&B の config (arm 名・ε・η など) に残る。
+    """
+    parts = ["011", "small" if arm.scale == "s" else "full"]
+    if arm.method == "bp":
+        parts.append("BP")
+    else:
+        parts += ["PC-ALM" if arm.method == "pcalm" else "PC", f"T={arm.steps}"]
+        if arm.method == "pcalm" and arm.alpha != 1.0:
+            parts.append(f"α={_num(arm.alpha)}")
+        if arm.rho != 1.0:
+            parts.append(f"ρ={_num(arm.rho)}")
+        if arm.eta_h is not None:
+            parts.append(f"η={_num(arm.eta_h)}")
+        elif arm.eta_auto != 1.0:
+            parts.append(f"η×{_num(arm.eta_auto)}")
+    if arm.lr != LR:
+        parts.append(f"lr×{_num(arm.lr / LR)}")
+    if arm.lr_min != LR_MIN:
+        parts.append(f"lrmin×{_num(arm.lr_min / LR_MIN)}")
+    if arm.files and arm.files[0] != min(arm.files):
+        parts.append("replicate")
+    return " ".join(parts)
+
+
 def rotate(files: list[int], start: int = 16) -> list[int]:
     i = files.index(start)
     return files[i:] + files[:i]
@@ -189,7 +222,12 @@ def main() -> None:
         print(f"METHOD={arm.method}")
         print(f"CREDIT_ARGS=({' '.join(shlex.quote(a) for a in arm.credit_args)})")
     else:
-        print(json.dumps({**asdict(arm), "credit_args": arm.credit_args}, indent=2))
+        print(
+            json.dumps(
+                {**asdict(arm), "credit_args": arm.credit_args, "display_name": display_name(arm)},
+                indent=2,
+            )
+        )
 
 
 if __name__ == "__main__":
