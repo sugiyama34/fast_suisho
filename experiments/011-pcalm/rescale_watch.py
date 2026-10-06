@@ -1,4 +1,7 @@
-"""experiment-011: PC-ALM / PC の checkpoint ができたら、出力側を縮めた nn.bin (export_rescaled.py, k は自動) を作り続ける。
+"""experiment-011: PC-ALM / PC の checkpoint ができたら、出力側を縮めた nn.bin (export_rescaled.py, k = 2 固定) を作り続ける。
+
+k = 2 で常に足りる (Ranger は各成分を ±1.98 で clip するので、実効重み = stack + shared は ±3.96 以内)。
+対局キューのジョブは PC 系のネットを FV_SCALE 24 (= 48 / k) で指す。
 
 対象: data/bulletou/checkpoints/011-{s,f}-{pcalm,pc}-*/NNNN/ (nn.bin と state.bin があり、--settle 秒以上更新がないもの)。
 出力: /mnt/D/sugiyama/011/rescaled/<フォルダ名>-e<N>/nn.bin (+ nn.bin.json)。対局キューのジョブはこちらを指す。
@@ -46,6 +49,8 @@ def main() -> None:
                         str(ep),
                         "--out",
                         str(dst),
+                        "--k",
+                        "2",
                     ],
                     capture_output=True,
                     text=True,

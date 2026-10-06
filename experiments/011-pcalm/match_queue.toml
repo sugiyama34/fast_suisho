@@ -166,3 +166,27 @@ priority = 15
 engine = "~/engines/yane-9133c527-finny-avx2/YaneuraOu-by-gcc"
 note = "M2: PC-ALM 段階 A (gn)。出力側 1/2 の書き出し (k=2), FV_SCALE 24 = 元の 48 相当"
 
+[[job]]
+name = "tune-s-pc-T8-gn-e1x@24-vs-bp-rep-e1@48-300k"
+a = "/mnt/D/sugiyama/011/rescaled/011-s-pc-T8-gn-e1"
+a_fv = 24
+b = "011-s-bp-lr1-rot/0001"
+b_fv = 48
+nodes = 300000
+pairs = 300
+priority = 25
+engine = "~/engines/yane-9133c527-finny-avx2/YaneuraOu-by-gcc"
+note = "M2: PC (α=0) の参照 arm (gn)。出力側 1/2 の書き出し (k=2), FV_SCALE 24"
+
+[[job]]
+name = "tune-s-pc-T16-gn-e1x@24-vs-bp-rep-e1@48-300k"
+a = "/mnt/D/sugiyama/011/rescaled/011-s-pc-T16-gn-e1"
+a_fv = 24
+b = "011-s-bp-lr1-rot/0001"
+b_fv = 48
+nodes = 300000
+pairs = 300
+priority = 25
+engine = "~/engines/yane-9133c527-finny-avx2/YaneuraOu-by-gcc"
+note = "M2: PC (α=0) の参照 arm (gn)。出力側 1/2 の書き出し (k=2), FV_SCALE 24"
+
