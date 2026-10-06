@@ -1,8 +1,8 @@
 diff --git a/crates/cuda_cpp/cpp/bulletou_cuda_backend.cu b/crates/cuda_cpp/cpp/bulletou_cuda_backend.cu
-index e91bced0..34d8f504 100644
+index e91bced0..ee2bf689 100644
 --- a/crates/cuda_cpp/cpp/bulletou_cuda_backend.cu
 +++ b/crates/cuda_cpp/cpp/bulletou_cuda_backend.cu
-@@ -7339,3 +7339,559 @@ extern "C" int bulletou_cuda_cpp_ranger_update_host(
+@@ -7339,3 +7339,644 @@ extern "C" int bulletou_cuda_cpp_ranger_update_host(
  
      return ok();
  }
@@ -167,6 +167,72 @@ index e91bced0..34d8f504 100644
 +    h1[tid] = x - eta * (g1 - back);
 +}
 +
++// Effective L1 weights (stacked + shared factorizer), row-major [stack][out][in], built once per
++// mini-batch so the inference kernels read them coalesced.
++__global__ void sfnn_pcalm_l1_effective_kernel(
++    const float* l1w,
++    const float* l1fw,
++    const float* l1b,
++    const float* l1fb,
++    float* w_eff,
++    float* b_eff,
++    size_t ft_size,
++    size_t l1_out,
++    size_t num_stacks) {
++    size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
++    const size_t per_stack = l1_out * ft_size;
++    if (tid < num_stacks * per_stack) {
++        const size_t rem = tid % per_stack;
++        const size_t o = rem / ft_size;
++        const size_t i = rem - o * ft_size;
++        w_eff[tid] = l1w[tid] + (l1fw != nullptr ? l1fw[i * l1_out + o] : 0.0f);
++    }
++    if (tid < num_stacks * l1_out) {
++        b_eff[tid] = l1b[tid] + (l1fb != nullptr ? l1fb[tid % l1_out] : 0.0f);
++    }
++}
++
++// p2 = L1(h1) with one warp per sample (coalesced reads of h1 and the effective weights).
++__global__ void sfnn_pcalm_l1_forward_warp_kernel(
++    const float* h1,
++    const float* w_eff,
++    const float* b_eff,
++    const int* buckets,
++    float* p2,
++    size_t batch,
++    size_t ft_size,
++    size_t l1_out,
++    size_t num_stacks) {
++    const size_t warp = (static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x) / 32;
++    const unsigned int lane = threadIdx.x & 31U;
++    if (warp >= batch) {
++        return;
++    }
++    const size_t sample = warp;
++    int stack_i32 = buckets[sample];
++    if (stack_i32 < 0 || static_cast<size_t>(stack_i32) >= num_stacks) {
++        if (lane < l1_out) {
++            p2[sample * l1_out + lane] = 0.0f;
++        }
++        return;
++    }
++    const size_t stack = static_cast<size_t>(stack_i32);
++    const float* x = h1 + sample * ft_size;
++    for (size_t o = 0; o < l1_out; ++o) {
++        const float* w = w_eff + (stack * l1_out + o) * ft_size;
++        float acc = 0.0f;
++        for (size_t i = lane; i < ft_size; i += 32) {
++            acc += x[i] * w[i];
++        }
++        for (int off = 16; off > 0; off >>= 1) {
++            acc += __shfl_down_sync(0xffffffffU, acc, off);
++        }
++        if (lane == 0) {
++            p2[sample * l1_out + o] = acc + b_eff[stack * l1_out + o];
++        }
++    }
++}
++
 +// delta = scale * (rho * (h - pred) + lambda); scale = -1 / batch turns the
 +// per-sample composite credit into a batch-mean BP-style output gradient.
 +__global__ void sfnn_pcalm_credit_kernel(
@@ -236,6 +302,8 @@ index e91bced0..34d8f504 100644
 +    const float* targets,
 +    const float* entry_weights,
 +    float output_inv_scale,
++    const float* l1w_eff,
++    const float* l1b_eff,
 +    const float* h1,
 +    const float* h2,
 +    const float* h3,
@@ -249,13 +317,12 @@ index e91bced0..34d8f504 100644
 +    int blocks = 0;
 +    const size_t l1_out = l1_hidden + 1;
 +    const size_t l2_in = l1_hidden * 2;
-+    if (block_count_1d(batch * l1_out, threads, &blocks, "pcalm sfnn_stacked_l1_kernel") != 0) {
++    if (block_count_1d(batch * 32, threads, &blocks, "pcalm sfnn_pcalm_l1_forward_warp_kernel") != 0) {
 +        return -1;
 +    }
-+    sfnn_stacked_l1_kernel<<<blocks, threads, 0, ctx->stream>>>(
-+        h1, l1w, l1b, l1fw, l1fb, nullptr, nullptr, buckets, p2, batch, ft_size, l1_out, num_stacks,
-+        factorizer_king_axis_dim, factorizer_hand_axis_dim, has_l1f, 0, 0, 0);
-+    if (check_kernel_launch("pcalm sfnn_stacked_l1_kernel launch") != 0) {
++    sfnn_pcalm_l1_forward_warp_kernel<<<blocks, threads, 0, ctx->stream>>>(
++        h1, l1w_eff, l1b_eff, buckets, p2, batch, ft_size, l1_out, num_stacks);
++    if (check_kernel_launch("pcalm sfnn_pcalm_l1_forward_warp_kernel launch") != 0) {
 +        return -1;
 +    }
 +    if (block_count_1d(batch * l2_in, threads, &blocks, "pcalm sfnn_l2_input_kernel") != 0) {
@@ -346,6 +413,8 @@ index e91bced0..34d8f504 100644
 +    BulletOuCudaCppF32Buffer* out,
 +    BulletOuCudaCppF32Buffer* lgrad,
 +    BulletOuCudaCppF32Buffer* lps,
++    BulletOuCudaCppF32Buffer* l1w_eff_buf,
++    BulletOuCudaCppF32Buffer* l1b_eff_buf,
 +    BulletOuCudaCppF32Buffer* l2_gradients,
 +    BulletOuCudaCppF32Buffer* l1_gradients,
 +    BulletOuCudaCppF32Buffer* combined_gradients,
@@ -429,6 +498,8 @@ index e91bced0..34d8f504 100644
 +        {out, out->len, batch, "pcalm out"},
 +        {lgrad, lgrad->len, batch, "pcalm lgrad"},
 +        {lps, lps->len, batch, "pcalm lps"},
++        {l1w_eff_buf, l1w_eff_buf->len, num_stacks * l1_out * ft_size, "pcalm l1w_eff"},
++        {l1b_eff_buf, l1b_eff_buf->len, num_stacks * l1_out, "pcalm l1b_eff"},
 +        {combined, combined->len, batch * ft_size, "pcalm combined"},
 +        {l1, l1->len, batch * l1_out, "pcalm l1"},
 +        {l2_input, l2_input->len, batch * l2_in, "pcalm l2_input"},
@@ -471,6 +542,19 @@ index e91bced0..34d8f504 100644
 +    }
 +
 +    constexpr int threads = 256;
++    float* w1_eff = l1w_eff_buf->ptr;
++    float* b1_eff = l1b_eff_buf->ptr;
++    {
++        int eff_blocks = 0;
++        if (block_count_1d(num_stacks * l1_out * ft_size, threads, &eff_blocks, "sfnn_pcalm_l1_effective_kernel") != 0) {
++            return -1;
++        }
++        sfnn_pcalm_l1_effective_kernel<<<eff_blocks, threads, 0, ctx->stream>>>(
++            l1w->ptr, w1f, l1b->ptr, b1f, w1_eff, b1_eff, ft_size, l1_out, num_stacks);
++        if (check_kernel_launch("sfnn_pcalm_l1_effective_kernel launch") != 0) {
++            return -1;
++        }
++    }
 +    int tail_blocks = 0;
 +    int ft_blocks = 0;
 +    if (block_count_1d(batch, threads, &tail_blocks, "sfnn_pcalm_tail_step_kernel") != 0 ||
@@ -487,7 +571,7 @@ index e91bced0..34d8f504 100644
 +            return -1;
 +        }
 +        sfnn_pcalm_ft_step_kernel<<<ft_blocks, threads, 0, ctx->stream>>>(
-+            h1->ptr, lam1->ptr, combined->ptr, g2->ptr, l1w->ptr, w1f, buckets->ptr, batch, ft_size, l1_out,
++            h1->ptr, lam1->ptr, combined->ptr, g2->ptr, w1_eff, nullptr, buckets->ptr, batch, ft_size, l1_out,
 +            num_stacks, alpha, rho, eta, apply_dual);
 +        if (check_kernel_launch("sfnn_pcalm_ft_step_kernel launch") != 0) {
 +            return -1;
@@ -496,7 +580,8 @@ index e91bced0..34d8f504 100644
 +                ctx, ft_size, l1_hidden, l2_size, num_stacks, factorizer_king_axis_dim, factorizer_hand_axis_dim,
 +                batch, buckets->ptr, l1w->ptr, l1b->ptr, w1f, b1f, has_l1f, l2w->ptr, l2b->ptr, w2f, b2f, has_l2f,
 +                l3w->ptr, l3b->ptr, w3f, b3f, has_l3f, targets->ptr, entry_weights->ptr, output_inv_scale,
-+                h1->ptr, h2->ptr, h3->ptr, p2->ptr, u->ptr, p3->ptr, out->ptr, lps->ptr, lgrad->ptr) != 0) {
++                w1_eff, b1_eff, h1->ptr, h2->ptr, h3->ptr, p2->ptr, u->ptr, p3->ptr, out->ptr, lps->ptr,
++                lgrad->ptr) != 0) {
 +            return -1;
 +        }
 +    }
@@ -767,10 +852,10 @@ index 00000000..0523b52e
 +    Ok(())
 +}
 diff --git a/crates/cuda_cpp/src/lib.rs b/crates/cuda_cpp/src/lib.rs
-index 9ccab528..15e32f76 100644
+index 9ccab528..033a7f3e 100644
 --- a/crates/cuda_cpp/src/lib.rs
 +++ b/crates/cuda_cpp/src/lib.rs
-@@ -3028,6 +3028,224 @@ fn sfnn_backward_device_impl(
+@@ -3028,6 +3028,230 @@ fn sfnn_backward_device_impl(
      check(rc)
  }
  
@@ -819,6 +904,8 @@ index 9ccab528..15e32f76 100644
 +    pub out: F32Buffer,
 +    pub lgrad: F32Buffer,
 +    pub lps: F32Buffer,
++    pub l1w_eff: F32Buffer,
++    pub l1b_eff: F32Buffer,
 +}
 +
 +impl SfnnPcalmWorkspace {
@@ -840,6 +927,8 @@ index 9ccab528..15e32f76 100644
 +            out: F32Buffer::new(ctx, batch_size)?,
 +            lgrad: F32Buffer::new(ctx, batch_size)?,
 +            lps: F32Buffer::new(ctx, batch_size)?,
++            l1w_eff: F32Buffer::new(ctx, shape.num_stacks * l1_out * shape.ft_size)?,
++            l1b_eff: F32Buffer::new(ctx, shape.num_stacks * l1_out)?,
 +        })
 +    }
 +}
@@ -957,6 +1046,8 @@ index 9ccab528..15e32f76 100644
 +            pcalm.out.as_ptr(),
 +            pcalm.lgrad.as_ptr(),
 +            pcalm.lps.as_ptr(),
++            pcalm.l1w_eff.as_ptr(),
++            pcalm.l1b_eff.as_ptr(),
 +            backward.l2_gradients.as_ptr(),
 +            backward.l1_gradients.as_ptr(),
 +            backward.combined_gradients.as_ptr(),
@@ -995,7 +1086,7 @@ index 9ccab528..15e32f76 100644
  #[derive(Debug)]
  pub struct RangerParamState {
      pub momentum: F32Buffer,
-@@ -4964,6 +5182,8 @@ pub struct SfnnTrainStepRunner {
+@@ -4964,6 +5188,8 @@ pub struct SfnnTrainStepRunner {
      pub backward_workspace: SfnnBackwardWorkspace,
      pub upload_slots: Vec<SfnnTrainStepUploadSlot>,
      pub next_upload_slot: usize,
@@ -1004,7 +1095,7 @@ index 9ccab528..15e32f76 100644
  }
  
  impl SfnnTrainStepRunner {
-@@ -5069,9 +5289,57 @@ impl SfnnTrainStepRunner {
+@@ -5069,9 +5295,57 @@ impl SfnnTrainStepRunner {
              backward_workspace,
              upload_slots,
              next_upload_slot: 0,
@@ -1062,7 +1153,7 @@ index 9ccab528..15e32f76 100644
      pub fn step(
          &mut self,
          ctx: &Context,
-@@ -5137,14 +5405,13 @@ impl SfnnTrainStepRunner {
+@@ -5137,14 +5411,13 @@ impl SfnnTrainStepRunner {
              &self.loss_workspace,
              finalize_loss,
          )?;
@@ -1082,7 +1173,7 @@ index 9ccab528..15e32f76 100644
          )?;
          self.update_weights(ctx, params)
      }
-@@ -5218,14 +5485,13 @@ impl SfnnTrainStepRunner {
+@@ -5218,14 +5491,13 @@ impl SfnnTrainStepRunner {
                  &self.loss_workspace,
                  finalize_loss,
              )?;
@@ -1102,7 +1193,7 @@ index 9ccab528..15e32f76 100644
              )?;
          }
          self.update_weights(ctx, params)?;
-@@ -5283,15 +5549,28 @@ impl SfnnTrainStepRunner {
+@@ -5283,15 +5555,28 @@ impl SfnnTrainStepRunner {
              &self.loss_workspace,
          )?;
          after_loss.record(ctx)?;
@@ -1140,7 +1231,7 @@ index 9ccab528..15e32f76 100644
          after_backward.record(ctx)?;
          self.update_weights(ctx, params)?;
          stop.record(ctx)?;
-@@ -6299,6 +6578,94 @@ mod ffi {
+@@ -6299,6 +6584,96 @@ mod ffi {
              l3axw_gradients: *mut BulletOuCudaCppF32Buffer,
              l3axb_gradients: *mut BulletOuCudaCppF32Buffer,
          ) -> i32;
@@ -1200,6 +1291,8 @@ index 9ccab528..15e32f76 100644
 +            out: *mut BulletOuCudaCppF32Buffer,
 +            lgrad: *mut BulletOuCudaCppF32Buffer,
 +            lps: *mut BulletOuCudaCppF32Buffer,
++            l1w_eff: *mut BulletOuCudaCppF32Buffer,
++            l1b_eff: *mut BulletOuCudaCppF32Buffer,
 +            l2_gradients: *mut BulletOuCudaCppF32Buffer,
 +            l1_gradients: *mut BulletOuCudaCppF32Buffer,
 +            combined_gradients: *mut BulletOuCudaCppF32Buffer,
