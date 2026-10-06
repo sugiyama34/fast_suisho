@@ -254,7 +254,7 @@ grep -a 'progress\]' experiments/009-data-scaling/logs/009-p10-bench-g0.log \
 
 `docs/PLAN.md` の「環境メモ」は旧開発機のスペック。移行したサーバーの値はここに追記する。
 
-### kajiki (2026-09-28 に一時使用。学習には不向きと判断)
+### kajiki (2026-09-28 に一時使用。2026-10-06 から experiment-011 で使用)
 
 | 項目 | 値 |
 | --- | --- |
@@ -263,5 +263,6 @@ grep -a 'progress\]' experiments/009-data-scaling/logs/009-p10-bench-g0.log \
 | GPU | RTX PRO 6000 Blackwell Max-Q (96 GB) を MIG 1g.24gb ×4 に分割。**使ってよいのは MIG device 2 / 3 のみ** (0 / 1 は他ユーザー)。起動時は `CUDA_VISIBLE_DEVICES=<MIG の UUID>` |
 | ディスク | `/` SATA SSD 1.8 TB (空き約 230 GB), `/mnt/D` HDD 20 TB (空き 15 TB, 実測 275 MB/s) |
 | 学習速度 | MIG スライスあたり約 0.65M 局面/秒で GPU 律速 (1 スライスに 2 run 載せても合計は増えない)。864 億局面の 1 run に約 37 時間 |
+| スタック上限 | **シェルの `ulimit -s` が unlimited**。この状態でやねうら王を起動すると探索スレッドのスタックが小さくなり (glibc の既定値)、深い再帰で SIGSEGV になる局面がある (2026-10-06, experiment-011 で再現: 300k ノードの対局でエンジンが毎回同じ手で落ちる)。**対局は `ulimit -s 8192` を付けて起動する** (8 MB で解消を確認) |
 
-詳細な計測は `experiments/009-data-scaling/hypothesis.md` §7。
+詳細な計測は `experiments/009-data-scaling/hypothesis.md` §7。2026-10-06 から experiment-011 で再び使用 (`experiments/011-pcalm/`)。
