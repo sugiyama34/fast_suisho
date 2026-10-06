@@ -78,3 +78,51 @@ priority = 20
 engine = "~/engines/yane-9133c527-finny-avx2/YaneuraOu-by-gcc"
 note = "M2: BP の LR 調整"
 
+[[job]]
+name = "tune-s-pcalm-T2-e1@48-vs-bp-rep-e1@48-300k"
+a = "011-s-pcalm-T2/0001"
+a_fv = 48
+b = "011-s-bp-lr1-rot/0001"
+b_fv = 48
+nodes = 300000
+pairs = 300
+priority = 15
+engine = "~/engines/yane-9133c527-finny-avx2/YaneuraOu-by-gcc"
+note = "M2: PC-ALM 段階 A (T, α=1, ρ=1, η 自動, ε 較正)"
+
+[[job]]
+name = "tune-s-pcalm-T3-e1@48-vs-bp-rep-e1@48-300k"
+a = "011-s-pcalm-T3/0001"
+a_fv = 48
+b = "011-s-bp-lr1-rot/0001"
+b_fv = 48
+nodes = 300000
+pairs = 300
+priority = 15
+engine = "~/engines/yane-9133c527-finny-avx2/YaneuraOu-by-gcc"
+note = "M2: PC-ALM 段階 A (T, α=1, ρ=1, η 自動, ε 較正)"
+
+[[job]]
+name = "tune-s-pcalm-T4-e1@48-vs-bp-rep-e1@48-300k"
+a = "011-s-pcalm-T4/0001"
+a_fv = 48
+b = "011-s-bp-lr1-rot/0001"
+b_fv = 48
+nodes = 300000
+pairs = 300
+priority = 15
+engine = "~/engines/yane-9133c527-finny-avx2/YaneuraOu-by-gcc"
+note = "M2: PC-ALM 段階 A (T, α=1, ρ=1, η 自動, ε 較正)"
+
+[[job]]
+name = "tune-s-pcalm-T8-e1@48-vs-bp-rep-e1@48-300k"
+a = "011-s-pcalm-T8/0001"
+a_fv = 48
+b = "011-s-bp-lr1-rot/0001"
+b_fv = 48
+nodes = 300000
+pairs = 300
+priority = 15
+engine = "~/engines/yane-9133c527-finny-avx2/YaneuraOu-by-gcc"
+note = "M2: PC-ALM 段階 A (T, α=1, ρ=1, η 自動, ε 較正)"
+

@@ -262,11 +262,15 @@ def pcalm_grads(
     steps: int,
     alpha: float,
     rho: float,
-    eta: float,
+    eta: float | tuple[float, float, float],
     timing: str = "pre_dual_energy",
     trace: list | None = None,
 ) -> dict[str, torch.Tensor]:
-    """PC-ALM の重み勾配 (参照実装 ``run_pcalm`` と同じ手順。``alpha = 0`` で PC)。"""
+    """PC-ALM の重み勾配 (参照実装 ``run_pcalm`` と同じ手順。``alpha = 0`` で PC)。
+
+    ``eta`` は全状態共通の刻み、または状態ごと (h1, h2, h3) の刻みの組 (層ごとの前処理。参照実装は共通の 1 つ)。
+    """
+    etas = (eta, eta, eta) if isinstance(eta, (int, float)) else tuple(eta)
     Pd = {k: v.detach() for k, v in P.items()}
     with torch.no_grad():
         fw = forward(Pd, b)
@@ -278,7 +282,7 @@ def pcalm_grads(
         hv = [x.detach().requires_grad_(True) for x in h]
         e = energy(Pd, b, pred1, tuple(hv), tuple(lam), rho)
         g = torch.autograd.grad(e, hv)
-        return [x.detach() - eta * gx for x, gx in zip(hv, g, strict=True)]
+        return [x.detach() - e * gx for x, gx, e in zip(hv, g, etas, strict=True)]
 
     for t in range(steps - 1):
         h = primal(h, lam)
@@ -350,3 +354,66 @@ def hessian_lambda_max(
         v = [x / n[:, None].clamp_min(1e-30) for x in hvp]
     resid = n - lam_max.abs()
     return lam_max.detach(), resid.detach()
+
+
+def block_lambda_max(
+    P: dict[str, torch.Tensor], b: Batch, rho: float, iters: int = 60, seed: int = 0
+) -> list[torch.Tensor]:
+    """状態ごと (h1, h2, h3) の対角ブロックの Hessian の最大固有値 (サンプルごと, べき乗法)。層ごとの刻みを決める。"""
+    Pd = {k: v.detach() for k, v in P.items()}
+    with torch.no_grad():
+        fw = forward(Pd, b)
+    pred1 = fw["c"]
+    h0 = [fw["c"].clone(), fw["z1"].clone(), fw["z2"].clone()]
+    lam = tuple(torch.zeros_like(x) for x in h0)
+    hv = [x.requires_grad_(True) for x in h0]
+    e = energy(Pd, b, pred1, tuple(hv), lam, rho)
+    g = torch.autograd.grad(e, hv, create_graph=True)
+    gen = torch.Generator(device=pred1.device).manual_seed(seed)
+    out = []
+    for blk in range(3):
+        v = [torch.zeros_like(x) for x in h0]
+        v[blk] = torch.randn(h0[blk].shape, generator=gen, device=pred1.device)
+        v[blk] = v[blk] / v[blk].norm(dim=1, keepdim=True)
+        lm = torch.zeros(pred1.shape[0], device=pred1.device)
+        for _ in range(iters):
+            hvp = torch.autograd.grad(g, hv, grad_outputs=v, retain_graph=True)
+            w = hvp[blk]
+            lm = (w * v[blk]).sum(dim=1)
+            n = w.norm(dim=1, keepdim=True).clamp_min(1e-30)
+            v = [torch.zeros_like(x) for x in h0]
+            v[blk] = w / n
+        out.append(lm.detach())
+    return out
+
+
+def auto_eta(
+    P: dict[str, torch.Tensor], b: Batch, rho: float, scale: float = 1.0
+) -> tuple[float, float, float, float]:
+    """BulletOu-pcalm の ``--pcalm-eta-auto`` と同じ式: (η, λ1, λ2, λ3)。
+
+    λ1 = ρ (1 + max_s σ_max(W1eff_s)²) (h1 のブロック)、
+    λ2 = 局面ごとの max(ρ (1 + σ_max(J3)²), ρ + 0.35) のバッチ最大 (J3 = 順伝播の点での d crelu(L2(u(h2))) / d h2)、
+    λ3 = ρ + 0.35 max_s |W3eff_s|²。η = scale / (1.05 max(λ1, λ2, λ3))。
+    """
+    w1 = (P["l1w"] + P["l1fw"].t().unsqueeze(0)).double()
+    w2 = (P["l2w"] + P["l2fw"].unsqueeze(0)).double()
+    w3 = (P["l3w"] + P["l3fw"].unsqueeze(0)).double()
+    lam1 = float((rho * (1.0 + torch.linalg.matrix_norm(w1, ord=2) ** 2)).max())
+    lam3 = float((rho + 0.35 * (w3**2).sum(dim=1)).max())
+    Pd = {k: v.detach() for k, v in P.items()}
+    with torch.no_grad():
+        fw = forward(Pd, b)
+        z1 = fw["z1"][:, :L1_H].double()
+        u = l2_input(fw["z1"]).double()
+        p3 = fw["z2"].double()
+        mask = lambda v: ((v > 0) & (v < 1)).double()  # noqa: E731
+        dsq = mask(u[:, :L1_H]) * 2.0 * z1 * PAIR_SCALE
+        dlin = mask(u[:, L1_H:])
+        wb = w2.to(z1.device)[b.bucket]  # [B, 64, 14]
+        j = mask(p3).unsqueeze(-1) * (
+            wb[:, :, :L1_H] * dsq.unsqueeze(1) + wb[:, :, L1_H:] * dlin.unsqueeze(1)
+        )
+        sig2 = torch.linalg.matrix_norm(j, ord=2) ** 2
+        lam2 = float(torch.clamp(rho * (1.0 + sig2), min=rho + 0.35).max())
+    return scale / (1.05 * max(lam1, lam2, lam3)), lam1, lam2, lam3

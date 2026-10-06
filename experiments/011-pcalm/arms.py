@@ -1,11 +1,14 @@
 """experiment-011 の arm 定義。arm 名からレシピを組み立てる (段階的な調整で arm を書き足さずに済むように)。
 
-arm 名の文法: ``<規模>-<手法>[-T<n>][-a<α>][-r<ρ>][-eta<η_h>][-lr<倍率>][-lrmin<倍率>][-rot]``
+arm 名の文法: ``<規模>-<手法>[-T<n>][-a<α>][-r<ρ>][-eta<η_h> | -etaA<倍率>][-eps<仮数>e<指数>][-lr<倍率>][-lrmin<倍率>][-rot]``
 
 - 規模: ``s`` = 小規模 (p30 の 9 ファイル, 既定 E=1)、``f`` = 本番規模 (30 ファイル, 既定 E=20)
 - 手法: ``bp`` (改造前の BulletOu), ``pcalm`` (``α`` 既定 1), ``pc`` (``α = 0``)
 - ``T``: 推論の回数 (pcalm / pc で必須)、``a``: dual の刻み ``α``、``r``: ペナルティ ``ρ`` (既定 1)
-- ``eta``: 状態の刻み ``η_h`` (省略時は ``ETA_H`` の表、M0 で決める)
+- ``eta``: 状態の刻み ``η_h`` を固定する。``etaA``: 自動 (ミニバッチごとに 倍率 / (1.05 × λ_max の推定),
+  BulletOu-pcalm の ``--pcalm-eta-auto``)。どちらも省略したら自動 (倍率 1)
+- ``eps``: Ranger の epsilon (``eps2.5e9`` = 2.5e-9)。pcalm / pc の既定は ``EPS_PCALM`` の表 (M0 の較正: 1e-7 ×
+  FT の勾配の大きさの比 PC-ALM / BP、experiment-011 notes/m0.md)。bp はレシピの既定 (1e-7) のまま
 - ``lr``: LR の最大値の倍率 (レシピ 0.000875 に掛ける)、``lrmin``: LR の最小値の倍率 (レシピ 0.00003 に掛ける)
 - ``rot``: 教師ファイルの順序を回転 (016 始まり, experiment-009 の full-rot と同じ考え方)
 
@@ -35,10 +38,26 @@ LR_MIN = 0.000030
 # 小規模の教師 = experiment-009 の p30 (S1 S6 S3)。ファイル番号の昇順
 SMALL_FILES = [1, 3, 6, 11, 13, 16, 21, 23, 26]
 FULL_FILES = list(range(1, 31))
-# η_h (状態の刻み) の既定値。(α, ρ) ごとに M0 の λ_max から決める (未定の間は None → arm 名で eta を明示する)
-ETA_H: dict[tuple[float, float], float] = {}
-
-_TOKEN = re.compile(r"^(T|a|r|eta|lrmin|lr)([0-9.e-]+)$")
+_TOKEN = re.compile(r"^(T|a|r|etaA|eta|lrmin|lr)([0-9.e-]+)$")
+_EPS = re.compile(r"^eps([0-9.]+)e([0-9]+)$")
+# Ranger の epsilon の較正 (2026-10-06, M0): BP の e1 (011-s-bp-lr1/0001) の重み、8,192 局面で、FT の勾配の
+# 非ゼロ要素の |g| の中央値の比 (PC-ALM / BP) × 1e-7 (BP のレシピの epsilon)。η は自動 (倍率 1)。
+# PC-ALM の勾配は BP の 1/100〜1/1000 で、epsilon 1e-7 のままでは FT の更新が epsilon に潰されるため
+EPS_PCALM: dict[tuple[int, float, float], float] = {
+    (2, 1.0, 1.0): 1.4e-10,
+    (3, 1.0, 1.0): 3.7e-10,
+    (4, 1.0, 1.0): 6.7e-10,
+    (8, 1.0, 1.0): 2.5e-9,
+    (16, 1.0, 1.0): 9.6e-9,
+    (4, 1.5, 1.0): 8.8e-10,
+    (4, 1.0, 2.0): 4.9e-10,
+    (8, 1.5, 1.0): 3.5e-9,
+    (8, 1.0, 2.0): 1.7e-9,
+    (4, 0.0, 1.0): 2.3e-10,
+    (8, 0.0, 1.0): 5.3e-10,
+    (16, 0.0, 1.0): 1.1e-9,
+    (32, 0.0, 1.0): 2.0e-9,
+}
 
 
 @dataclass
@@ -54,11 +73,14 @@ class Arm:
     alpha: float | None = None
     rho: float | None = None
     eta_h: float | None = None
+    eta_auto: float | None = None
+    eps: float | None = None  # Ranger の epsilon (None = レシピの既定)
 
     @property
     def credit_args(self) -> list[str]:
+        eps = [] if self.eps is None else ["--optimizer-epsilon", repr(self.eps)]
         if self.method == "bp":
-            return []
+            return eps
         return [
             "--credit",
             "pcalm",
@@ -68,8 +90,12 @@ class Arm:
             repr(self.alpha),
             "--pcalm-rho",
             repr(self.rho),
-            "--pcalm-eta-h",
-            repr(self.eta_h),
+            *(
+                ["--pcalm-eta-h", repr(self.eta_h)]
+                if self.eta_h is not None
+                else ["--pcalm-eta-auto", repr(self.eta_auto)]
+            ),
+            *eps,
         ]
 
     def teacher(self) -> str:
@@ -94,6 +120,10 @@ def parse(name: str) -> Arm:
         if tok == "rot":
             rot = True
             continue
+        me = _EPS.match(tok)
+        if me:
+            arm.eps = float(me.group(1)) * 10.0 ** -int(me.group(2))
+            continue
         m = _TOKEN.match(tok)
         if not m:
             raise ValueError(f"arm 名の要素が不正: {tok} ({name})")
@@ -106,6 +136,8 @@ def parse(name: str) -> Arm:
             arm.rho = float(val)
         elif key == "eta":
             arm.eta_h = float(val)
+        elif key == "etaA":
+            arm.eta_auto = float(val)
         elif key == "lr":
             arm.lr = LR * float(val)
         elif key == "lrmin":
@@ -113,12 +145,7 @@ def parse(name: str) -> Arm:
     if rot:
         arm.files = rotate(arm.files)
     if method == "bp":
-        if (
-            arm.steps is not None
-            or arm.alpha is not None
-            or arm.rho is not None
-            or arm.eta_h is not None
-        ):
+        if any(x is not None for x in (arm.steps, arm.alpha, arm.rho, arm.eta_h, arm.eta_auto)):
             raise ValueError(f"bp に T / a / r / eta は付けない: {name}")
     else:
         if arm.steps is None or arm.steps < 1:
@@ -131,11 +158,16 @@ def parse(name: str) -> Arm:
             arm.alpha = 1.0
         if arm.rho is None:
             arm.rho = 1.0
-        if arm.eta_h is None:
-            arm.eta_h = ETA_H.get((arm.alpha, arm.rho))
-        if arm.eta_h is None:
+        if arm.eta_h is not None and arm.eta_auto is not None:
+            raise ValueError(f"eta と etaA は同時に付けない: {name}")
+        if arm.eta_h is None and arm.eta_auto is None:
+            arm.eta_auto = 1.0
+        if arm.eps is None:
+            arm.eps = EPS_PCALM.get((arm.steps, arm.alpha, arm.rho))
+        if arm.eps is None:
             raise ValueError(
-                f"η_h が未定 (ETA_H に (α={arm.alpha}, ρ={arm.rho}) が無い)。arm 名に eta<値> を付ける: {name}"
+                f"Ranger の epsilon が未較正 (EPS_PCALM に (T={arm.steps}, α={arm.alpha}, ρ={arm.rho}) が無い)。"
+                f"eps<仮数>e<指数> を付けるか表に足す: {name}"
             )
     return arm
 

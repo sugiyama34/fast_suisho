@@ -1,8 +1,8 @@
 diff --git a/crates/cuda_cpp/cpp/bulletou_cuda_backend.cu b/crates/cuda_cpp/cpp/bulletou_cuda_backend.cu
-index e91bced0..ee2bf689 100644
+index e91bced0..2eb24495 100644
 --- a/crates/cuda_cpp/cpp/bulletou_cuda_backend.cu
 +++ b/crates/cuda_cpp/cpp/bulletou_cuda_backend.cu
-@@ -7339,3 +7339,644 @@ extern "C" int bulletou_cuda_cpp_ranger_update_host(
+@@ -7339,3 +7339,1214 @@ extern "C" int bulletou_cuda_cpp_ranger_update_host(
  
      return ok();
  }
@@ -21,27 +21,45 @@ index e91bced0..ee2bf689 100644
 +// right before primal steps 2..T. Weight gradients are the BP weight-gradient
 +// reductions with the BP adjoints replaced by -(rho * r_i + lambda_i) / batch
 +// and activations replaced by the settled states.
++//
++// Numerics: the states are stored as offsets from the forward pass
++// (d_i = h_i - forward_i) and every prediction is computed as forward value +
++// change, so residuals are never formed by subtracting two O(1) numbers
++// (float32 cancellation otherwise dominates the small PC-ALM credits).
++//
 +// Supported: dense stacked L1 with optional shared factorizer, no axis
 +// factorizer, sigmoid-MSE loss (checked on the Rust side as well).
 +// ============================================================================
 +
 +constexpr size_t SFNN_PCALM_MAX_L2_IN = 32;
++constexpr size_t SFNN_PCALM_MAX_L2 = 128;
 +
 +__device__ __forceinline__ float sfnn_pcalm_crelu_mask(float value) {
 +    return value > 0.0f && value < 1.0f ? 1.0f : 0.0f;
 +}
 +
-+// One thread per sample: dual (optional) + primal step for h3 and h2, and the
++__device__ __forceinline__ float sfnn_pcalm_w2(
++    const float* l2w, const float* l2fw, size_t stack, size_t o, size_t i, size_t l2_size, size_t l2_in) {
++    return l2w[stack * l2_size * l2_in + o * l2_in + i] + (l2fw != nullptr ? l2fw[o * l2_in + i] : 0.0f);
++}
++
++__device__ __forceinline__ float sfnn_pcalm_w3(const float* l3w, const float* l3fw, size_t stack, size_t o, size_t l2_size) {
++    return l3w[stack * l2_size + o] + (l3fw != nullptr ? l3fw[o] : 0.0f);
++}
++
++// One thread per sample: dual (optional) + primal step for d3 and d2, and the
 +// layer-2 composite credit g2 = rho * r2 + lambda2 used by the h1 step.
 +__global__ void sfnn_pcalm_tail_step_kernel(
-+    float* h2,
++    float* d2,
 +    float* lam2,
 +    float* g2_out,
-+    const float* p2,
++    const float* q2,
++    const float* l1_fwd,
 +    const float* u,
-+    float* h3,
++    float* d3,
 +    float* lam3,
 +    const float* p3,
++    const float* e3,
 +    const float* lgrad_mean,
 +    const float* l2w,
 +    const float* l2fw,
@@ -55,12 +73,13 @@ index e91bced0..ee2bf689 100644
 +    float batch_scale,
 +    float alpha,
 +    float rho,
-+    float eta,
++    const float* eta_ptr,
 +    int apply_dual) {
 +    size_t sample = blockIdx.x * blockDim.x + threadIdx.x;
 +    if (sample >= batch) {
 +        return;
 +    }
++    const float eta = eta_ptr[0];
 +    const size_t l1_out = l1_hidden + 1;
 +    const size_t l2_in = l1_hidden * 2;
 +    int stack_i32 = buckets[sample];
@@ -79,28 +98,24 @@ index e91bced0..ee2bf689 100644
 +    }
 +    for (size_t o = 0; o < l2_size; ++o) {
 +        const size_t idx = sample * l2_size + o;
-+        const float r3 = h3[idx] - p3[idx];
++        const float r3 = d3[idx] - e3[idx];
 +        float lm = lam3[idx];
 +        if (apply_dual != 0) {
 +            lm += alpha * r3;
 +            lam3[idx] = lm;
 +        }
 +        const float g3 = rho * r3 + lm;
-+        const float w3 = l3w[stack * l2_size + o] + (l3fw != nullptr ? l3fw[o] : 0.0f);
 +        const float v = sfnn_pcalm_crelu_mask(p3[idx]) * g3;
 +        if (v != 0.0f) {
-+            const float* w2row = l2w + stack * l2_size * l2_in + o * l2_in;
-+            const float* f2row = l2fw != nullptr ? l2fw + o * l2_in : nullptr;
 +            for (size_t i = 0; i < l2_in; ++i) {
-+                back[i] += v * (w2row[i] + (f2row != nullptr ? f2row[i] : 0.0f));
++                back[i] += v * sfnn_pcalm_w2(l2w, l2fw, stack, o, i, l2_size, l2_in);
 +            }
 +        }
-+        h3[idx] -= eta * (g3 + lg * w3);
++        d3[idx] -= eta * (g3 + lg * sfnn_pcalm_w3(l3w, l3fw, stack, o, l2_size));
 +    }
 +    for (size_t r = 0; r < l1_out; ++r) {
 +        const size_t idx = sample * l1_out + r;
-+        const float x = h2[idx];
-+        const float r2 = x - p2[idx];
++        const float r2 = d2[idx] - q2[idx];
 +        float lm = lam2[idx];
 +        if (apply_dual != 0) {
 +            lm += alpha * r2;
@@ -110,6 +125,7 @@ index e91bced0..ee2bf689 100644
 +        g2_out[idx] = g;
 +        float grad = 0.0f;
 +        if (r < l1_hidden) {
++            const float x = l1_fwd[idx] + d2[idx];
 +            const float sq = u[sample * l2_in + r];
 +            const float lin = u[sample * l2_in + l1_hidden + r];
 +            const float jt = back[r] * sfnn_pcalm_crelu_mask(sq) * (2.0f * x * SFNN_PAIRWISE_SCALE) +
@@ -118,18 +134,16 @@ index e91bced0..ee2bf689 100644
 +        } else {
 +            grad = g + lg;  // L1 -> output shortcut
 +        }
-+        h2[idx] = x - eta * grad;
++        d2[idx] -= eta * grad;
 +    }
 +}
 +
-+// One thread per (sample, ft unit): dual (optional) + primal step for h1.
++// One thread per (sample, ft unit): dual (optional) + primal step for d1 (= h1 - combined_fwd = r1).
 +__global__ void sfnn_pcalm_ft_step_kernel(
-+    float* h1,
++    float* d1,
 +    float* lam1,
-+    const float* combined_fwd,
 +    const float* g2,
-+    const float* l1w,
-+    const float* l1fw,
++    const float* w1_eff,
 +    const int* buckets,
 +    size_t batch,
 +    size_t ft_size,
@@ -137,12 +151,13 @@ index e91bced0..ee2bf689 100644
 +    size_t num_stacks,
 +    float alpha,
 +    float rho,
-+    float eta,
++    const float* eta_ptr,
 +    int apply_dual) {
 +    size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
 +    if (tid >= batch * ft_size) {
 +        return;
 +    }
++    const float eta = eta_ptr[0];
 +    const size_t sample = tid / ft_size;
 +    const size_t j = tid - sample * ft_size;
 +    int stack_i32 = buckets[sample];
@@ -150,55 +165,46 @@ index e91bced0..ee2bf689 100644
 +        return;
 +    }
 +    const size_t stack = static_cast<size_t>(stack_i32);
-+    const float x = h1[tid];
-+    const float r1 = x - combined_fwd[tid];
++    const float r1 = d1[tid];
 +    float lm = lam1[tid];
 +    if (apply_dual != 0) {
 +        lm += alpha * r1;
 +        lam1[tid] = lm;
 +    }
 +    const float g1 = rho * r1 + lm;
-+    const float* w = l1w + stack * l1_out * ft_size + j;
++    const float* w = w1_eff + stack * l1_out * ft_size + j;
 +    float back = 0.0f;
 +    for (size_t k = 0; k < l1_out; ++k) {
-+        const float wk = w[k * ft_size] + (l1fw != nullptr ? l1fw[j * l1_out + k] : 0.0f);
-+        back += wk * g2[sample * l1_out + k];
++        back += w[k * ft_size] * g2[sample * l1_out + k];
 +    }
-+    h1[tid] = x - eta * (g1 - back);
++    d1[tid] = r1 - eta * (g1 - back);
 +}
 +
-+// Effective L1 weights (stacked + shared factorizer), row-major [stack][out][in], built once per
-+// mini-batch so the inference kernels read them coalesced.
++// Effective L1 weights (stacked + shared factorizer), row-major [stack][out][in].
 +__global__ void sfnn_pcalm_l1_effective_kernel(
 +    const float* l1w,
 +    const float* l1fw,
-+    const float* l1b,
-+    const float* l1fb,
 +    float* w_eff,
-+    float* b_eff,
 +    size_t ft_size,
 +    size_t l1_out,
 +    size_t num_stacks) {
 +    size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
 +    const size_t per_stack = l1_out * ft_size;
-+    if (tid < num_stacks * per_stack) {
-+        const size_t rem = tid % per_stack;
-+        const size_t o = rem / ft_size;
-+        const size_t i = rem - o * ft_size;
-+        w_eff[tid] = l1w[tid] + (l1fw != nullptr ? l1fw[i * l1_out + o] : 0.0f);
++    if (tid >= num_stacks * per_stack) {
++        return;
 +    }
-+    if (tid < num_stacks * l1_out) {
-+        b_eff[tid] = l1b[tid] + (l1fb != nullptr ? l1fb[tid % l1_out] : 0.0f);
-+    }
++    const size_t rem = tid % per_stack;
++    const size_t o = rem / ft_size;
++    const size_t i = rem - o * ft_size;
++    w_eff[tid] = l1w[tid] + (l1fw != nullptr ? l1fw[i * l1_out + o] : 0.0f);
 +}
 +
-+// p2 = L1(h1) with one warp per sample (coalesced reads of h1 and the effective weights).
-+__global__ void sfnn_pcalm_l1_forward_warp_kernel(
-+    const float* h1,
++// q2 = W1eff * d1 (the change of the L1 prediction), one warp per sample.
++__global__ void sfnn_pcalm_l1_delta_warp_kernel(
++    const float* d1,
 +    const float* w_eff,
-+    const float* b_eff,
 +    const int* buckets,
-+    float* p2,
++    float* q2,
 +    size_t batch,
 +    size_t ft_size,
 +    size_t l1_out,
@@ -212,12 +218,12 @@ index e91bced0..ee2bf689 100644
 +    int stack_i32 = buckets[sample];
 +    if (stack_i32 < 0 || static_cast<size_t>(stack_i32) >= num_stacks) {
 +        if (lane < l1_out) {
-+            p2[sample * l1_out + lane] = 0.0f;
++            q2[sample * l1_out + lane] = 0.0f;
 +        }
 +        return;
 +    }
 +    const size_t stack = static_cast<size_t>(stack_i32);
-+    const float* x = h1 + sample * ft_size;
++    const float* x = d1 + sample * ft_size;
 +    for (size_t o = 0; o < l1_out; ++o) {
 +        const float* w = w_eff + (stack * l1_out + o) * ft_size;
 +        float acc = 0.0f;
@@ -228,17 +234,91 @@ index e91bced0..ee2bf689 100644
 +            acc += __shfl_down_sync(0xffffffffU, acc, off);
 +        }
 +        if (lane == 0) {
-+            p2[sample * l1_out + o] = acc + b_eff[stack * l1_out + o];
++            q2[sample * l1_out + o] = acc;
 +        }
 +    }
 +}
 +
-+// delta = scale * (rho * (h - pred) + lambda); scale = -1 / batch turns the
-+// per-sample composite credit into a batch-mean BP-style output gradient.
++// Per sample: u = u(l1_fwd + d2); pre3_ref (once, init != 0) = W2eff * u_fwd + b2eff;
++// p3 = crelu(pre3_ref + W2eff * (u - u_fwd)); e3 = p3 - crelu(pre3_ref);
++// out = out_fwd + W3eff . d3 + d2[l1_hidden].
++__global__ void sfnn_pcalm_tail_predict_kernel(
++    const float* l1_fwd,
++    const float* d2,
++    const float* u_fwd,
++    float* u,
++    float* pre3_ref,
++    float* p3,
++    float* e3,
++    const float* d3,
++    const float* out_fwd,
++    float* out,
++    const float* l2w,
++    const float* l2b,
++    const float* l2fw,
++    const float* l2fb,
++    const float* l3w,
++    const float* l3fw,
++    const int* buckets,
++    size_t batch,
++    size_t l1_hidden,
++    size_t l2_size,
++    size_t num_stacks,
++    int init) {
++    size_t sample = blockIdx.x * blockDim.x + threadIdx.x;
++    if (sample >= batch) {
++        return;
++    }
++    const size_t l1_out = l1_hidden + 1;
++    const size_t l2_in = l1_hidden * 2;
++    int stack_i32 = buckets[sample];
++    if (stack_i32 < 0 || static_cast<size_t>(stack_i32) >= num_stacks) {
++        out[sample] = out_fwd[sample];
++        return;
++    }
++    const size_t stack = static_cast<size_t>(stack_i32);
++    float du[SFNN_PCALM_MAX_L2_IN];
++    for (size_t r = 0; r < l1_hidden; ++r) {
++        const float x = l1_fwd[sample * l1_out + r] + d2[sample * l1_out + r];
++        const float ax = fabsf(x);
++        const float sq = crelu(ax * ax * SFNN_PAIRWISE_SCALE);
++        const float lin = crelu(x);
++        u[sample * l2_in + r] = sq;
++        u[sample * l2_in + l1_hidden + r] = lin;
++        du[r] = sq - u_fwd[sample * l2_in + r];
++        du[l1_hidden + r] = lin - u_fwd[sample * l2_in + l1_hidden + r];
++    }
++    float o_acc = 0.0f;
++    for (size_t o = 0; o < l2_size; ++o) {
++        const size_t idx = sample * l2_size + o;
++        if (init != 0) {
++            float pre = l2b[stack * l2_size + o] + (l2fb != nullptr ? l2fb[o] : 0.0f);
++            for (size_t i = 0; i < l2_in; ++i) {
++                pre += sfnn_pcalm_w2(l2w, l2fw, stack, o, i, l2_size, l2_in) * u_fwd[sample * l2_in + i];
++            }
++            pre3_ref[idx] = pre;
++        }
++        float delta = 0.0f;
++        for (size_t i = 0; i < l2_in; ++i) {
++            if (du[i] != 0.0f) {
++                delta += sfnn_pcalm_w2(l2w, l2fw, stack, o, i, l2_size, l2_in) * du[i];
++            }
++        }
++        const float base = pre3_ref[idx];
++        const float p = crelu(base + delta);
++        p3[idx] = p;
++        e3[idx] = p - crelu(base);
++        o_acc += sfnn_pcalm_w3(l3w, l3fw, stack, o, l2_size) * d3[idx];
++    }
++    out[sample] = out_fwd[sample] + o_acc + d2[sample * l1_out + l1_hidden];
++}
++
++// delta = scale * (rho * (d - q) + lambda) with q optional (nullptr = 0); scale = -1 / batch
++// turns the per-sample composite credit into a batch-mean BP-style output gradient.
 +__global__ void sfnn_pcalm_credit_kernel(
-+    const float* h,
++    const float* d,
++    const float* q,
 +    const float* lam,
-+    const float* pred,
 +    float* delta,
 +    size_t len,
 +    float rho,
@@ -247,7 +327,563 @@ index e91bced0..ee2bf689 100644
 +    if (tid >= len) {
 +        return;
 +    }
-+    delta[tid] = scale * (rho * (h[tid] - pred[tid]) + lam[tid]);
++    const float r = d[tid] - (q != nullptr ? q[tid] : 0.0f);
++    delta[tid] = scale * (rho * r + lam[tid]);
++}
++
++// dst = base + d (absolute settled states for the weight-gradient reductions).
++__global__ void sfnn_pcalm_add_kernel(const float* base, const float* d, float* dst, size_t len) {
++    size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
++    if (tid >= len) {
++        return;
++    }
++    dst[tid] = base[tid] + d[tid];
++}
++
++// Largest eigenvalue of a small symmetric PSD matrix (n <= 16) by power iteration.
++__device__ float sfnn_pcalm_sym_lambda_max(const float* g, int n) {
++    float v[16];
++    for (int i = 0; i < n; ++i) {
++        v[i] = 1.0f + 0.01f * static_cast<float>(i);
++    }
++    float lambda = 0.0f;
++    for (int it = 0; it < 100; ++it) {
++        float w[16];
++        float norm = 0.0f;
++        for (int i = 0; i < n; ++i) {
++            float acc = 0.0f;
++            for (int j = 0; j < n; ++j) {
++                acc += g[i * n + j] * v[j];
++            }
++            w[i] = acc;
++            norm += acc * acc;
++        }
++        norm = sqrtf(norm);
++        if (norm <= 0.0f) {
++            return 0.0f;
++        }
++        float dot = 0.0f;
++        for (int i = 0; i < n; ++i) {
++            dot += w[i] * v[i];
++            v[i] = w[i] / norm;
++        }
++        lambda = dot;
++    }
++    return lambda;
++}
++
++// eta_out[0] = eta used by the inference loop; [1], [2], [3] = lambda_1, lambda_3, lambda_2 (diagnostics;
++// [3] is accumulated per sample by sfnn_pcalm_lambda2_kernel before this kernel runs).
++// Fixed mode (auto_scale <= 0): eta = fixed_eta. Auto mode: eta = auto_scale / (1.05 * max(lambda_1, lambda_2, lambda_3))
++//   lambda_1 = rho * (1 + max_s sigma_max(W1eff_s)^2)   (the h1 block: rho * (I + W1^T W1)),
++//   lambda_3 = rho + 0.35 * max_s |W3eff_s|^2          (0.35 bounds the sigmoid-MSE curvature),
++//   lambda_2 = max over the batch of rho * (1 + sigma_max(J3)^2) (sfnn_pcalm_lambda2_kernel),
++// i.e. the reference rule eta = 1 / lambda_max (block-wise estimate), tracked as the weights grow.
++__global__ void sfnn_pcalm_eta_kernel(
++    const float* w1_eff,
++    const float* l3w,
++    const float* l3fw,
++    float* eta_out,
++    size_t ft_size,
++    size_t l1_out,
++    size_t l2_size,
++    size_t num_stacks,
++    float rho,
++    float fixed_eta,
++    float auto_scale) {
++    if (blockIdx.x != 0 || threadIdx.x != 0) {
++        return;
++    }
++    if (auto_scale <= 0.0f) {
++        eta_out[0] = fixed_eta;
++        eta_out[1] = 0.0f;
++        eta_out[2] = 0.0f;
++        return;
++    }
++    float lam1 = 0.0f;
++    float lam3 = 0.0f;
++    for (size_t s = 0; s < num_stacks; ++s) {
++        float g[16 * 16];
++        const float* w = w1_eff + s * l1_out * ft_size;
++        for (size_t a = 0; a < l1_out; ++a) {
++            for (size_t b = a; b < l1_out; ++b) {
++                float acc = 0.0f;
++                for (size_t i = 0; i < ft_size; ++i) {
++                    acc += w[a * ft_size + i] * w[b * ft_size + i];
++                }
++                g[a * l1_out + b] = acc;
++                g[b * l1_out + a] = acc;
++            }
++        }
++        lam1 = fmaxf(lam1, rho * (1.0f + sfnn_pcalm_sym_lambda_max(g, static_cast<int>(l1_out))));
++        float w3sq = 0.0f;
++        for (size_t o = 0; o < l2_size; ++o) {
++            const float w3 = sfnn_pcalm_w3(l3w, l3fw, s, o, l2_size);
++            w3sq += w3 * w3;
++        }
++        lam3 = fmaxf(lam3, rho + 0.35f * w3sq);
++    }
++    eta_out[0] = auto_scale / (1.05f * fmaxf(fmaxf(lam1, lam3), eta_out[3]));
++    eta_out[1] = lam1;
++    eta_out[2] = lam3;
++}
++
++// Per sample at the forward state: lambda_2 = rho * (1 + sigma_max(J3)^2) with J3 = d crelu(L2(u(h2))) / d h2
++// (masks from the forward values), and max(lambda_2, rho + 0.35) for the shortcut entry. The batch maximum is
++// accumulated into eta_buf[3] (positive floats compare like their int bit patterns).
++__global__ void sfnn_pcalm_lambda2_kernel(
++    const float* l1_fwd,
++    const float* u,
++    const float* p3,
++    const float* l2w,
++    const float* l2fw,
++    const int* buckets,
++    float* eta_buf,
++    size_t batch,
++    size_t l1_hidden,
++    size_t l2_size,
++    size_t num_stacks,
++    float rho) {
++    size_t sample = blockIdx.x * blockDim.x + threadIdx.x;
++    if (sample >= batch) {
++        return;
++    }
++    int stack_i32 = buckets[sample];
++    if (stack_i32 < 0 || static_cast<size_t>(stack_i32) >= num_stacks) {
++        return;
++    }
++    const size_t stack = static_cast<size_t>(stack_i32);
++    const size_t l1_out = l1_hidden + 1;
++    const size_t l2_in = l1_hidden * 2;
++    float dsq[16];
++    float dlin[16];
++    for (size_t r = 0; r < l1_hidden; ++r) {
++        const float x = l1_fwd[sample * l1_out + r];
++        dsq[r] = sfnn_pcalm_crelu_mask(u[sample * l2_in + r]) * 2.0f * x * SFNN_PAIRWISE_SCALE;
++        dlin[r] = sfnn_pcalm_crelu_mask(u[sample * l2_in + l1_hidden + r]);
++    }
++    float g[16 * 16];
++    for (size_t i = 0; i < l1_hidden * l1_hidden; ++i) {
++        g[i] = 0.0f;
++    }
++    for (size_t o = 0; o < l2_size; ++o) {
++        if (sfnn_pcalm_crelu_mask(p3[sample * l2_size + o]) == 0.0f) {
++            continue;
++        }
++        float j[16];
++        for (size_t r = 0; r < l1_hidden; ++r) {
++            j[r] = sfnn_pcalm_w2(l2w, l2fw, stack, o, r, l2_size, l2_in) * dsq[r] +
++                sfnn_pcalm_w2(l2w, l2fw, stack, o, l1_hidden + r, l2_size, l2_in) * dlin[r];
++        }
++        for (size_t a = 0; a < l1_hidden; ++a) {
++            for (size_t b = 0; b < l1_hidden; ++b) {
++                g[a * l1_hidden + b] += j[a] * j[b];
++            }
++        }
++    }
++    const float lam2 = fmaxf(rho * (1.0f + sfnn_pcalm_sym_lambda_max(g, static_cast<int>(l1_hidden))), rho + 0.35f);
++    atomicMax(reinterpret_cast<int*>(eta_buf + 3), __float_as_int(lam2));
++}
++
++// ---------------------------------------------------------------------------- optimized kernels
++// Layout of the "eff" scratch buffer: [W1eff S*l1_out*ft][W2eff S*l2*l2in][b2eff S*l2][W3eff S*l2].
++constexpr unsigned int SFNN_PCALM_TAIL_SAMPLES = 4;  // samples per block in the tail kernels
++constexpr unsigned int SFNN_PCALM_TAIL_LANES = 64;   // threads per sample (one per L2 output, l2_size <= 64)
++
++__global__ void sfnn_pcalm_tail_effective_kernel(
++    const float* l2w,
++    const float* l2b,
++    const float* l2fw,
++    const float* l2fb,
++    const float* l3w,
++    const float* l3fw,
++    float* w2_eff,
++    float* b2_eff,
++    float* w3_eff,
++    size_t l2_size,
++    size_t l2_in,
++    size_t num_stacks) {
++    size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
++    if (tid < num_stacks * l2_size * l2_in) {
++        const size_t rem = tid % (l2_size * l2_in);
++        w2_eff[tid] = l2w[tid] + (l2fw != nullptr ? l2fw[rem] : 0.0f);
++    }
++    if (tid < num_stacks * l2_size) {
++        const size_t o = tid % l2_size;
++        b2_eff[tid] = l2b[tid] + (l2fb != nullptr ? l2fb[o] : 0.0f);
++        w3_eff[tid] = l3w[tid] + (l3fw != nullptr ? l3fw[o] : 0.0f);
++    }
++}
++
++__device__ __forceinline__ float sfnn_pcalm_warp_sum(float v) {
++    for (int off = 16; off > 0; off >>= 1) {
++        v += __shfl_down_sync(0xffffffffU, v, off);
++    }
++    return v;
++}
++
++// Predictions for the tail, one thread per (sample, L2 output). Same math as sfnn_pcalm_tail_predict_kernel.
++__global__ void sfnn_pcalm_tail_predict_v2_kernel(
++    const float* l1_fwd,
++    const float* d2,
++    const float* u_fwd,
++    float* u,
++    float* pre3_ref,
++    float* p3,
++    float* e3,
++    const float* d3,
++    const float* out_fwd,
++    float* out,
++    const float* w2_eff,
++    const float* b2_eff,
++    const float* w3_eff,
++    const int* buckets,
++    size_t batch,
++    size_t l1_hidden,
++    size_t l2_size,
++    size_t num_stacks,
++    int init) {
++    __shared__ float partial[SFNN_PCALM_TAIL_SAMPLES][2];
++    const unsigned int local = threadIdx.x / SFNN_PCALM_TAIL_LANES;
++    const unsigned int o = threadIdx.x % SFNN_PCALM_TAIL_LANES;
++    const size_t sample = static_cast<size_t>(blockIdx.x) * SFNN_PCALM_TAIL_SAMPLES + local;
++    const bool in_batch = sample < batch;
++    const int stack_i32 = in_batch ? buckets[sample] : -1;
++    const bool valid = stack_i32 >= 0 && static_cast<size_t>(stack_i32) < num_stacks;
++    const size_t stack = valid ? static_cast<size_t>(stack_i32) : 0;
++    const size_t l1_out = l1_hidden + 1;
++    const size_t l2_in = l1_hidden * 2;
++    float contrib = 0.0f;
++    if (valid && o < l2_size) {
++        float du[SFNN_PCALM_MAX_L2_IN];
++        for (size_t r = 0; r < l1_hidden; ++r) {
++            const float x = l1_fwd[sample * l1_out + r] + d2[sample * l1_out + r];
++            const float ax = fabsf(x);
++            const float sq = crelu(ax * ax * SFNN_PAIRWISE_SCALE);
++            const float lin = crelu(x);
++            du[r] = sq - u_fwd[sample * l2_in + r];
++            du[l1_hidden + r] = lin - u_fwd[sample * l2_in + l1_hidden + r];
++            if (o == r) {
++                u[sample * l2_in + r] = sq;
++            }
++            if (o == l1_hidden + r) {
++                u[sample * l2_in + l1_hidden + r] = lin;
++            }
++        }
++        const float* w = w2_eff + (stack * l2_size + o) * l2_in;
++        const size_t idx = sample * l2_size + o;
++        float base;
++        if (init != 0) {
++            base = b2_eff[stack * l2_size + o];
++            for (size_t i = 0; i < l2_in; ++i) {
++                base += w[i] * u_fwd[sample * l2_in + i];
++            }
++            pre3_ref[idx] = base;
++        } else {
++            base = pre3_ref[idx];
++        }
++        float delta = 0.0f;
++        for (size_t i = 0; i < l2_in; ++i) {
++            delta += w[i] * du[i];
++        }
++        const float pv = crelu(base + delta);
++        p3[idx] = pv;
++        e3[idx] = pv - crelu(base);
++        contrib = w3_eff[stack * l2_size + o] * d3[idx];
++    }
++    contrib = sfnn_pcalm_warp_sum(contrib);
++    if ((o & 31U) == 0) {
++        partial[local][o >> 5] = contrib;
++    }
++    __syncthreads();
++    if (in_batch && o == 0) {
++        out[sample] = valid ? out_fwd[sample] + partial[local][0] + partial[local][1] + d2[sample * l1_out + l1_hidden]
++                            : out_fwd[sample];
++    }
++}
++
++// Dual (optional) + primal step for d3 and d2, one thread per (sample, L2 output).
++// Same math as sfnn_pcalm_tail_step_kernel.
++__global__ void sfnn_pcalm_tail_step_v2_kernel(
++    float* d2,
++    float* lam2,
++    float* g2_out,
++    const float* q2,
++    const float* l1_fwd,
++    const float* u,
++    float* d3,
++    float* lam3,
++    const float* p3,
++    const float* e3,
++    const float* lgrad_mean,
++    const float* w2_eff,
++    const float* w3_eff,
++    const int* buckets,
++    size_t batch,
++    size_t l1_hidden,
++    size_t l2_size,
++    size_t num_stacks,
++    float batch_scale,
++    float alpha,
++    float rho,
++    const float* eta_ptr,
++    int apply_dual) {
++    __shared__ float back_sh[SFNN_PCALM_TAIL_SAMPLES][2][SFNN_PCALM_MAX_L2_IN];
++    const unsigned int local = threadIdx.x / SFNN_PCALM_TAIL_LANES;
++    const unsigned int o = threadIdx.x % SFNN_PCALM_TAIL_LANES;
++    const size_t sample = static_cast<size_t>(blockIdx.x) * SFNN_PCALM_TAIL_SAMPLES + local;
++    const bool in_batch = sample < batch;
++    const int stack_i32 = in_batch ? buckets[sample] : -1;
++    const bool valid = stack_i32 >= 0 && static_cast<size_t>(stack_i32) < num_stacks;
++    const size_t stack = valid ? static_cast<size_t>(stack_i32) : 0;
++    const size_t l1_out = l1_hidden + 1;
++    const size_t l2_in = l1_hidden * 2;
++    const float eta = eta_ptr[0];
++    const float lg = in_batch ? lgrad_mean[sample] * batch_scale : 0.0f;
++    float v = 0.0f;
++    if (valid && o < l2_size) {
++        const size_t idx = sample * l2_size + o;
++        const float r3 = d3[idx] - e3[idx];
++        float lm = lam3[idx];
++        if (apply_dual != 0) {
++            lm += alpha * r3;
++            lam3[idx] = lm;
++        }
++        const float g3 = rho * r3 + lm;
++        v = sfnn_pcalm_crelu_mask(p3[idx]) * g3;
++        d3[idx] -= eta * (g3 + lg * w3_eff[stack * l2_size + o]);
++    }
++    const float* w = w2_eff + (stack * l2_size + (o < l2_size ? o : 0)) * l2_in;
++    for (size_t i = 0; i < l2_in; ++i) {
++        const float s = sfnn_pcalm_warp_sum(v * w[i]);
++        if ((o & 31U) == 0) {
++            back_sh[local][o >> 5][i] = s;
++        }
++    }
++    __syncthreads();
++    if (!valid) {
++        if (in_batch && o < l1_out) {
++            g2_out[sample * l1_out + o] = 0.0f;
++        }
++        return;
++    }
++    if (o < l1_out) {
++        const size_t idx = sample * l1_out + o;
++        const float r2 = d2[idx] - q2[idx];
++        float lm = lam2[idx];
++        if (apply_dual != 0) {
++            lm += alpha * r2;
++            lam2[idx] = lm;
++        }
++        const float g = rho * r2 + lm;
++        g2_out[idx] = g;
++        float grad = 0.0f;
++        if (o < l1_hidden) {
++            const float x = l1_fwd[idx] + d2[idx];
++            const float sq = u[sample * l2_in + o];
++            const float lin = u[sample * l2_in + l1_hidden + o];
++            const float b_sq = back_sh[local][0][o] + back_sh[local][1][o];
++            const float b_lin = back_sh[local][0][l1_hidden + o] + back_sh[local][1][l1_hidden + o];
++            const float jt = b_sq * sfnn_pcalm_crelu_mask(sq) * (2.0f * x * SFNN_PAIRWISE_SCALE) +
++                b_lin * sfnn_pcalm_crelu_mask(lin);
++            grad = g - jt;
++        } else {
++            grad = g + lg;  // L1 -> output shortcut
++        }
++        d2[idx] -= eta * grad;
++    }
++}
++
++// Dual (optional) + primal step for d1 fused with q2 = W1eff * d1_new; one warp per sample.
++__global__ void sfnn_pcalm_ft_step_q2_kernel(
++    float* d1,
++    float* lam1,
++    const float* g2,
++    const float* w1_eff,
++    float* q2,
++    const int* buckets,
++    size_t batch,
++    size_t ft_size,
++    size_t l1_out,
++    size_t num_stacks,
++    float alpha,
++    float rho,
++    const float* eta_ptr,
++    int apply_dual) {
++    const size_t sample = (static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x) / 32;
++    const unsigned int lane = threadIdx.x & 31U;
++    if (sample >= batch) {
++        return;
++    }
++    const int stack_i32 = buckets[sample];
++    if (stack_i32 < 0 || static_cast<size_t>(stack_i32) >= num_stacks) {
++        if (lane < l1_out) {
++            q2[sample * l1_out + lane] = 0.0f;
++        }
++        return;
++    }
++    const size_t stack = static_cast<size_t>(stack_i32);
++    const float eta = eta_ptr[0];
++    float gk[16];
++    float qk[16];
++    for (size_t k = 0; k < l1_out; ++k) {
++        gk[k] = g2[sample * l1_out + k];
++        qk[k] = 0.0f;
++    }
++    const float* w = w1_eff + stack * l1_out * ft_size;
++    float* dd = d1 + sample * ft_size;
++    float* ll = lam1 + sample * ft_size;
++    for (size_t j = lane; j < ft_size; j += 32) {
++        const float r1 = dd[j];
++        float lm = ll[j];
++        if (apply_dual != 0) {
++            lm += alpha * r1;
++            ll[j] = lm;
++        }
++        float back = 0.0f;
++        for (size_t k = 0; k < l1_out; ++k) {
++            back += w[k * ft_size + j] * gk[k];
++        }
++        const float dn = r1 - eta * (rho * r1 + lm - back);
++        dd[j] = dn;
++        for (size_t k = 0; k < l1_out; ++k) {
++            qk[k] += w[k * ft_size + j] * dn;
++        }
++    }
++    for (size_t k = 0; k < l1_out; ++k) {
++        const float sum = sfnn_pcalm_warp_sum(qk[k]);
++        if (lane == 0) {
++            q2[sample * l1_out + k] = sum;
++        }
++    }
++}
++
++// lambda_1 / lambda_3 per stack in parallel (one block per stack), accumulated with atomicMax into
++// eta_out[1] / eta_out[2] (zeroed beforehand). Same estimate as sfnn_pcalm_eta_kernel.
++__global__ void sfnn_pcalm_lambda13_kernel(
++    const float* w1_eff,
++    const float* w3_eff,
++    float* eta_out,
++    size_t ft_size,
++    size_t l1_out,
++    size_t l2_size,
++    float rho) {
++    __shared__ float gram_sh[16 * 16];
++    const size_t s = blockIdx.x;
++    const float* w = w1_eff + s * l1_out * ft_size;
++    for (size_t e = threadIdx.x; e < l1_out * l1_out; e += blockDim.x) {
++        gram_sh[e] = 0.0f;
++    }
++    __syncthreads();
++    for (size_t a = 0; a < l1_out; ++a) {
++        for (size_t b = a; b < l1_out; ++b) {
++            float acc = 0.0f;
++            for (size_t i = threadIdx.x; i < ft_size; i += blockDim.x) {
++                acc += w[a * ft_size + i] * w[b * ft_size + i];
++            }
++            acc = sfnn_pcalm_warp_sum(acc);
++            if ((threadIdx.x & 31U) == 0) {
++                atomicAdd(&gram_sh[a * l1_out + b], acc);
++            }
++        }
++    }
++    __syncthreads();
++    if (threadIdx.x == 0) {
++        float g[16 * 16];
++        for (size_t a = 0; a < l1_out; ++a) {
++            for (size_t b = a; b < l1_out; ++b) {
++                g[a * l1_out + b] = gram_sh[a * l1_out + b];
++                g[b * l1_out + a] = gram_sh[a * l1_out + b];
++            }
++        }
++        const float lam1 = rho * (1.0f + sfnn_pcalm_sym_lambda_max(g, static_cast<int>(l1_out)));
++        float w3sq = 0.0f;
++        for (size_t o = 0; o < l2_size; ++o) {
++            const float x = w3_eff[s * l2_size + o];
++            w3sq += x * x;
++        }
++        const float lam3 = rho + 0.35f * w3sq;
++        atomicMax(reinterpret_cast<int*>(eta_out + 1), __float_as_int(lam1));
++        atomicMax(reinterpret_cast<int*>(eta_out + 2), __float_as_int(lam3));
++    }
++}
++
++__global__ void sfnn_pcalm_eta_finalize_kernel(float* eta_out, float fixed_eta, float auto_scale) {
++    if (blockIdx.x != 0 || threadIdx.x != 0) {
++        return;
++    }
++    if (auto_scale <= 0.0f) {
++        eta_out[0] = fixed_eta;
++        return;
++    }
++    eta_out[0] = auto_scale / (1.05f * fmaxf(fmaxf(eta_out[1], eta_out[2]), eta_out[3]));
++}
++
++// lambda_2 (per sample) with precomputed W2eff and fewer power iterations; same estimate as
++// sfnn_pcalm_lambda2_kernel.
++__global__ void sfnn_pcalm_lambda2_v2_kernel(
++    const float* l1_fwd,
++    const float* u,
++    const float* p3,
++    const float* w2_eff,
++    const int* buckets,
++    float* eta_buf,
++    size_t batch,
++    size_t l1_hidden,
++    size_t l2_size,
++    size_t num_stacks,
++    float rho) {
++    size_t sample = blockIdx.x * blockDim.x + threadIdx.x;
++    if (sample >= batch) {
++        return;
++    }
++    int stack_i32 = buckets[sample];
++    if (stack_i32 < 0 || static_cast<size_t>(stack_i32) >= num_stacks) {
++        return;
++    }
++    const size_t stack = static_cast<size_t>(stack_i32);
++    const size_t l1_out = l1_hidden + 1;
++    const size_t l2_in = l1_hidden * 2;
++    float dsq[16];
++    float dlin[16];
++    for (size_t r = 0; r < l1_hidden; ++r) {
++        const float x = l1_fwd[sample * l1_out + r];
++        dsq[r] = sfnn_pcalm_crelu_mask(u[sample * l2_in + r]) * 2.0f * x * SFNN_PAIRWISE_SCALE;
++        dlin[r] = sfnn_pcalm_crelu_mask(u[sample * l2_in + l1_hidden + r]);
++    }
++    float g[16 * 16];
++    for (size_t i = 0; i < l1_hidden * l1_hidden; ++i) {
++        g[i] = 0.0f;
++    }
++    for (size_t o = 0; o < l2_size; ++o) {
++        if (sfnn_pcalm_crelu_mask(p3[sample * l2_size + o]) == 0.0f) {
++            continue;
++        }
++        const float* w = w2_eff + (stack * l2_size + o) * l2_in;
++        float j[16];
++        for (size_t r = 0; r < l1_hidden; ++r) {
++            j[r] = w[r] * dsq[r] + w[l1_hidden + r] * dlin[r];
++        }
++        for (size_t a = 0; a < l1_hidden; ++a) {
++            for (size_t b = 0; b < l1_hidden; ++b) {
++                g[a * l1_hidden + b] += j[a] * j[b];
++            }
++        }
++    }
++    const float lam2 = fmaxf(rho * (1.0f + sfnn_pcalm_sym_lambda_max(g, static_cast<int>(l1_hidden))), rho + 0.35f);
++    atomicMax(reinterpret_cast<int*>(eta_buf + 3), __float_as_int(lam2));
++}
++
++// Fused credit + absolute state for h1: delta = scale * (rho * d1 + lam1); lam1 <- combined + d1.
++__global__ void sfnn_pcalm_credit_h1_kernel(
++    const float* d1, float* lam1_then_h1, const float* combined, float* delta, size_t len, float rho, float scale) {
++    size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
++    if (tid >= len) {
++        return;
++    }
++    const float r = d1[tid];
++    delta[tid] = scale * (rho * r + lam1_then_h1[tid]);
++    lam1_then_h1[tid] = combined[tid] + r;
 +}
 +
 +int sfnn_pcalm_copy(BulletOuCudaCppContext* ctx, float* dst, const float* src, size_t len, const char* label) {
@@ -268,92 +904,6 @@ index e91bced0..ee2bf689 100644
 +    cudaError_t status = cudaMemsetAsync(dst, 0, len * sizeof(float), ctx->stream);
 +    if (status != cudaSuccess) {
 +        return fail(label, status);
-+    }
-+    return 0;
-+}
-+
-+// Predictions at the current states: p2 = L1(h1), u = u(h2), p3 = crelu(L2(u)),
-+// out = L3(h3) + h2[l1_hidden], lgrad_mean = d(batch-mean loss)/d out.
-+int sfnn_pcalm_predictions(
-+    BulletOuCudaCppContext* ctx,
-+    size_t ft_size,
-+    size_t l1_hidden,
-+    size_t l2_size,
-+    size_t num_stacks,
-+    size_t factorizer_king_axis_dim,
-+    size_t factorizer_hand_axis_dim,
-+    size_t batch,
-+    const int* buckets,
-+    const float* l1w,
-+    const float* l1b,
-+    const float* l1fw,
-+    const float* l1fb,
-+    int has_l1f,
-+    const float* l2w,
-+    const float* l2b,
-+    const float* l2fw,
-+    const float* l2fb,
-+    int has_l2f,
-+    const float* l3w,
-+    const float* l3b,
-+    const float* l3fw,
-+    const float* l3fb,
-+    int has_l3f,
-+    const float* targets,
-+    const float* entry_weights,
-+    float output_inv_scale,
-+    const float* l1w_eff,
-+    const float* l1b_eff,
-+    const float* h1,
-+    const float* h2,
-+    const float* h3,
-+    float* p2,
-+    float* u,
-+    float* p3,
-+    float* out,
-+    float* lps,
-+    float* lgrad_mean) {
-+    constexpr int threads = 256;
-+    int blocks = 0;
-+    const size_t l1_out = l1_hidden + 1;
-+    const size_t l2_in = l1_hidden * 2;
-+    if (block_count_1d(batch * 32, threads, &blocks, "pcalm sfnn_pcalm_l1_forward_warp_kernel") != 0) {
-+        return -1;
-+    }
-+    sfnn_pcalm_l1_forward_warp_kernel<<<blocks, threads, 0, ctx->stream>>>(
-+        h1, l1w_eff, l1b_eff, buckets, p2, batch, ft_size, l1_out, num_stacks);
-+    if (check_kernel_launch("pcalm sfnn_pcalm_l1_forward_warp_kernel launch") != 0) {
-+        return -1;
-+    }
-+    if (block_count_1d(batch * l2_in, threads, &blocks, "pcalm sfnn_l2_input_kernel") != 0) {
-+        return -1;
-+    }
-+    sfnn_l2_input_kernel<<<blocks, threads, 0, ctx->stream>>>(h2, u, batch, l1_hidden);
-+    if (check_kernel_launch("pcalm sfnn_l2_input_kernel launch") != 0) {
-+        return -1;
-+    }
-+    if (block_count_1d(batch * l2_size, threads, &blocks, "pcalm sfnn_stacked_l2_crelu_kernel") != 0) {
-+        return -1;
-+    }
-+    sfnn_stacked_l2_crelu_kernel<<<blocks, threads, 0, ctx->stream>>>(
-+        u, l2w, l2b, l2fw, l2fb, nullptr, nullptr, buckets, p3, batch, l2_in, l2_size, num_stacks,
-+        factorizer_king_axis_dim, factorizer_hand_axis_dim, has_l2f, 0, 0, 0);
-+    if (check_kernel_launch("pcalm sfnn_stacked_l2_crelu_kernel launch") != 0) {
-+        return -1;
-+    }
-+    if (block_count_1d(batch, threads, &blocks, "pcalm sfnn_stacked_l3_output_kernel") != 0) {
-+        return -1;
-+    }
-+    sfnn_stacked_l3_output_kernel<<<blocks, threads, 0, ctx->stream>>>(
-+        h3, h2, l3w, l3b, l3fw, l3fb, nullptr, nullptr, buckets, out, batch, l2_size, l1_hidden, num_stacks,
-+        factorizer_king_axis_dim, factorizer_hand_axis_dim, has_l3f, 0, 0, 0);
-+    if (check_kernel_launch("pcalm sfnn_stacked_l3_output_kernel launch") != 0) {
-+        return -1;
-+    }
-+    loss_sigmoid_mse_reduce_kernel<<<blocks, threads, 0, ctx->stream>>>(
-+        out, targets, entry_weights, lps, lgrad_mean, output_inv_scale, batch);
-+    if (check_kernel_launch("pcalm loss_sigmoid_mse_reduce_kernel launch") != 0) {
-+        return -1;
 +    }
 +    return 0;
 +}
@@ -381,10 +931,9 @@ index e91bced0..ee2bf689 100644
 +    const BulletOuCudaCppF32Buffer* l1,
 +    const BulletOuCudaCppF32Buffer* l2_input,
 +    const BulletOuCudaCppF32Buffer* l2,
++    const BulletOuCudaCppF32Buffer* output,
 +    const BulletOuCudaCppF32Buffer* l1w,
-+    const BulletOuCudaCppF32Buffer* l1b,
 +    const BulletOuCudaCppF32Buffer* l1fw,
-+    const BulletOuCudaCppF32Buffer* l1fb,
 +    int has_l1f,
 +    const BulletOuCudaCppF32Buffer* l2w,
 +    const BulletOuCudaCppF32Buffer* l2b,
@@ -392,29 +941,29 @@ index e91bced0..ee2bf689 100644
 +    const BulletOuCudaCppF32Buffer* l2fb,
 +    int has_l2f,
 +    const BulletOuCudaCppF32Buffer* l3w,
-+    const BulletOuCudaCppF32Buffer* l3b,
 +    const BulletOuCudaCppF32Buffer* l3fw,
-+    const BulletOuCudaCppF32Buffer* l3fb,
 +    int has_l3f,
 +    const BulletOuCudaCppF32Buffer* targets,
 +    const BulletOuCudaCppF32Buffer* entry_weights,
 +    float output_inv_scale,
 +    const BulletOuCudaCppF32Buffer* mean_output_gradients,
-+    BulletOuCudaCppF32Buffer* h1,
++    BulletOuCudaCppF32Buffer* d1,
 +    BulletOuCudaCppF32Buffer* lam1,
-+    BulletOuCudaCppF32Buffer* h2,
++    BulletOuCudaCppF32Buffer* d2,
 +    BulletOuCudaCppF32Buffer* lam2,
-+    BulletOuCudaCppF32Buffer* p2,
++    BulletOuCudaCppF32Buffer* q2,
 +    BulletOuCudaCppF32Buffer* g2,
 +    BulletOuCudaCppF32Buffer* u,
-+    BulletOuCudaCppF32Buffer* h3,
++    BulletOuCudaCppF32Buffer* d3,
 +    BulletOuCudaCppF32Buffer* lam3,
 +    BulletOuCudaCppF32Buffer* p3,
++    BulletOuCudaCppF32Buffer* e3,
++    BulletOuCudaCppF32Buffer* pre3_ref,
 +    BulletOuCudaCppF32Buffer* out,
 +    BulletOuCudaCppF32Buffer* lgrad,
 +    BulletOuCudaCppF32Buffer* lps,
-+    BulletOuCudaCppF32Buffer* l1w_eff_buf,
-+    BulletOuCudaCppF32Buffer* l1b_eff_buf,
++    BulletOuCudaCppF32Buffer* w1_eff_buf,
++    BulletOuCudaCppF32Buffer* eta_buf,
 +    BulletOuCudaCppF32Buffer* l2_gradients,
 +    BulletOuCudaCppF32Buffer* l1_gradients,
 +    BulletOuCudaCppF32Buffer* combined_gradients,
@@ -444,7 +993,8 @@ index e91bced0..ee2bf689 100644
 +    size_t steps,
 +    float alpha,
 +    float rho,
-+    float eta) {
++    float eta,
++    float eta_auto_scale) {
 +    if (validate_sfnn_shape(
 +            input_size,
 +            ft_size,
@@ -466,50 +1016,52 @@ index e91bced0..ee2bf689 100644
 +    if (num_stacks > SFNN_DENSE_REDUCE_MAX_FAST_STACKS) {
 +        return fail_message("PC-ALM requires the dense parameter-reduce fast path (too many stacks)");
 +    }
-+    if (l1_hidden * 2 > SFNN_PCALM_MAX_L2_IN) {
-+        return fail_message("PC-ALM: l1_hidden too large");
++    if (l1_hidden * 2 > SFNN_PCALM_MAX_L2_IN || l1_hidden + 1 > 16 || l2_size > SFNN_PCALM_TAIL_LANES) {
++        return fail_message("PC-ALM: layer sizes out of range");
 +    }
 +    if (steps == 0) {
 +        return fail_message("PC-ALM steps must be at least 1");
 +    }
-+    if (!(std::isfinite(alpha) && std::isfinite(rho) && std::isfinite(eta)) || eta <= 0.0f || rho < 0.0f ||
-+        alpha < 0.0f) {
-+        return fail_message("PC-ALM alpha/rho/eta must be finite, eta > 0, rho >= 0, alpha >= 0");
++    if (!(std::isfinite(alpha) && std::isfinite(rho) && std::isfinite(eta) && std::isfinite(eta_auto_scale)) ||
++        rho < 0.0f || alpha < 0.0f || (eta_auto_scale <= 0.0f && eta <= 0.0f)) {
++        return fail_message("PC-ALM alpha/rho/eta must be finite, rho >= 0, alpha >= 0, and eta > 0 or eta_auto_scale > 0");
 +    }
 +    const size_t l1_out = l1_hidden + 1;
 +    const size_t l2_in = l1_hidden * 2;
 +    struct Need {
-+        const void* buf;
 +        size_t have;
 +        size_t want;
 +        const char* name;
 +    };
 +    const Need needs[] = {
-+        {h1, h1->len, batch * ft_size, "pcalm h1"},
-+        {lam1, lam1->len, batch * ft_size, "pcalm lam1"},
-+        {h2, h2->len, batch * l1_out, "pcalm h2"},
-+        {lam2, lam2->len, batch * l1_out, "pcalm lam2"},
-+        {p2, p2->len, batch * l1_out, "pcalm p2"},
-+        {g2, g2->len, batch * l1_out, "pcalm g2"},
-+        {u, u->len, batch * l2_in, "pcalm u"},
-+        {h3, h3->len, batch * l2_size, "pcalm h3"},
-+        {lam3, lam3->len, batch * l2_size, "pcalm lam3"},
-+        {p3, p3->len, batch * l2_size, "pcalm p3"},
-+        {out, out->len, batch, "pcalm out"},
-+        {lgrad, lgrad->len, batch, "pcalm lgrad"},
-+        {lps, lps->len, batch, "pcalm lps"},
-+        {l1w_eff_buf, l1w_eff_buf->len, num_stacks * l1_out * ft_size, "pcalm l1w_eff"},
-+        {l1b_eff_buf, l1b_eff_buf->len, num_stacks * l1_out, "pcalm l1b_eff"},
-+        {combined, combined->len, batch * ft_size, "pcalm combined"},
-+        {l1, l1->len, batch * l1_out, "pcalm l1"},
-+        {l2_input, l2_input->len, batch * l2_in, "pcalm l2_input"},
-+        {l2, l2->len, batch * l2_size, "pcalm l2"},
-+        {l2_gradients, l2_gradients->len, batch * l2_size, "pcalm l2_gradients"},
-+        {l1_gradients, l1_gradients->len, batch * l1_out, "pcalm l1_gradients"},
-+        {combined_gradients, combined_gradients->len, batch * ft_size, "pcalm combined_gradients"},
-+        {targets, targets->len, batch, "pcalm targets"},
-+        {entry_weights, entry_weights->len, batch, "pcalm entry_weights"},
-+        {mean_output_gradients, mean_output_gradients->len, batch, "pcalm mean_output_gradients"},
++        {d1->len, batch * ft_size, "pcalm d1"},
++        {lam1->len, batch * ft_size, "pcalm lam1"},
++        {d2->len, batch * l1_out, "pcalm d2"},
++        {lam2->len, batch * l1_out, "pcalm lam2"},
++        {q2->len, batch * l1_out, "pcalm q2"},
++        {g2->len, batch * l1_out, "pcalm g2"},
++        {u->len, batch * l2_in, "pcalm u"},
++        {d3->len, batch * l2_size, "pcalm d3"},
++        {lam3->len, batch * l2_size, "pcalm lam3"},
++        {p3->len, batch * l2_size, "pcalm p3"},
++        {e3->len, batch * l2_size, "pcalm e3"},
++        {pre3_ref->len, batch * l2_size, "pcalm pre3_ref"},
++        {out->len, batch, "pcalm out"},
++        {lgrad->len, batch, "pcalm lgrad"},
++        {lps->len, batch, "pcalm lps"},
++        {w1_eff_buf->len, num_stacks * (l1_out * ft_size + l2_size * l2_in + 2 * l2_size), "pcalm eff weights"},
++        {eta_buf->len, 4, "pcalm eta"},
++        {combined->len, batch * ft_size, "pcalm combined"},
++        {l1->len, batch * l1_out, "pcalm l1"},
++        {l2_input->len, batch * l2_in, "pcalm l2_input"},
++        {l2->len, batch * l2_size, "pcalm l2"},
++        {output->len, batch, "pcalm output"},
++        {l2_gradients->len, batch * l2_size, "pcalm l2_gradients"},
++        {l1_gradients->len, batch * l1_out, "pcalm l1_gradients"},
++        {combined_gradients->len, batch * ft_size, "pcalm combined_gradients"},
++        {targets->len, batch, "pcalm targets"},
++        {entry_weights->len, batch, "pcalm entry_weights"},
++        {mean_output_gradients->len, batch, "pcalm mean_output_gradients"},
 +    };
 +    for (const Need& n : needs) {
 +        if (n.have < n.want) {
@@ -521,90 +1073,108 @@ index e91bced0..ee2bf689 100644
 +    }
 +
 +    const float* w1f = has_l1f != 0 ? l1fw->ptr : nullptr;
-+    const float* b1f = has_l1f != 0 ? l1fb->ptr : nullptr;
 +    const float* w2f = has_l2f != 0 ? l2fw->ptr : nullptr;
 +    const float* b2f = has_l2f != 0 ? l2fb->ptr : nullptr;
 +    const float* w3f = has_l3f != 0 ? l3fw->ptr : nullptr;
-+    const float* b3f = has_l3f != 0 ? l3fb->ptr : nullptr;
++    constexpr int threads = 256;
++    int blocks = 0;
 +
-+    // Initial states = forward pass, lambda = 0, predictions = forward values.
-+    if (sfnn_pcalm_copy(ctx, h1->ptr, combined->ptr, batch * ft_size, "pcalm copy h1") != 0 ||
-+        sfnn_pcalm_copy(ctx, h2->ptr, l1->ptr, batch * l1_out, "pcalm copy h2") != 0 ||
-+        sfnn_pcalm_copy(ctx, h3->ptr, l2->ptr, batch * l2_size, "pcalm copy h3") != 0 ||
-+        sfnn_pcalm_copy(ctx, p2->ptr, l1->ptr, batch * l1_out, "pcalm copy p2") != 0 ||
-+        sfnn_pcalm_copy(ctx, u->ptr, l2_input->ptr, batch * l2_in, "pcalm copy u") != 0 ||
-+        sfnn_pcalm_copy(ctx, p3->ptr, l2->ptr, batch * l2_size, "pcalm copy p3") != 0 ||
-+        sfnn_pcalm_copy(ctx, lgrad->ptr, mean_output_gradients->ptr, batch, "pcalm copy lgrad") != 0 ||
++    // Effective weights (L1 / L2 / L3 with the shared factorizer folded in), computed once per mini-batch.
++    const size_t n_w1 = num_stacks * l1_out * ft_size;
++    float* w1_eff = w1_eff_buf->ptr;
++    float* w2_eff = w1_eff + n_w1;
++    float* b2_eff = w2_eff + num_stacks * l2_size * l2_in;
++    float* w3_eff = b2_eff + num_stacks * l2_size;
++    if (block_count_1d(n_w1, threads, &blocks, "sfnn_pcalm_l1_effective_kernel") != 0) {
++        return -1;
++    }
++    sfnn_pcalm_l1_effective_kernel<<<blocks, threads, 0, ctx->stream>>>(
++        l1w->ptr, w1f, w1_eff, ft_size, l1_out, num_stacks);
++    if (block_count_1d(num_stacks * l2_size * l2_in, threads, &blocks, "sfnn_pcalm_tail_effective_kernel") != 0) {
++        return -1;
++    }
++    sfnn_pcalm_tail_effective_kernel<<<blocks, threads, 0, ctx->stream>>>(
++        l2w->ptr, l2b->ptr, w2f, b2f, l3w->ptr, w3f, w2_eff, b2_eff, w3_eff, l2_size, l2_in, num_stacks);
++    if (check_kernel_launch("sfnn_pcalm effective weights launch") != 0) {
++        return -1;
++    }
++
++    // Offsets from the forward pass start at zero; duals at zero.
++    if (sfnn_pcalm_zero(ctx, d1->ptr, batch * ft_size, "pcalm zero d1") != 0 ||
++        sfnn_pcalm_zero(ctx, d2->ptr, batch * l1_out, "pcalm zero d2") != 0 ||
++        sfnn_pcalm_zero(ctx, d3->ptr, batch * l2_size, "pcalm zero d3") != 0 ||
++        sfnn_pcalm_zero(ctx, q2->ptr, batch * l1_out, "pcalm zero q2") != 0 ||
 +        sfnn_pcalm_zero(ctx, lam1->ptr, batch * ft_size, "pcalm zero lam1") != 0 ||
 +        sfnn_pcalm_zero(ctx, lam2->ptr, batch * l1_out, "pcalm zero lam2") != 0 ||
-+        sfnn_pcalm_zero(ctx, lam3->ptr, batch * l2_size, "pcalm zero lam3") != 0) {
++        sfnn_pcalm_zero(ctx, lam3->ptr, batch * l2_size, "pcalm zero lam3") != 0 ||
++        sfnn_pcalm_zero(ctx, eta_buf->ptr, 4, "pcalm zero eta") != 0 ||
++        sfnn_pcalm_copy(ctx, lgrad->ptr, mean_output_gradients->ptr, batch, "pcalm copy lgrad") != 0) {
++        return -1;
++    }
++    const unsigned int tail_threads = SFNN_PCALM_TAIL_SAMPLES * SFNN_PCALM_TAIL_LANES;
++    const int tail_blocks = static_cast<int>((batch + SFNN_PCALM_TAIL_SAMPLES - 1) / SFNN_PCALM_TAIL_SAMPLES);
++    int sample_blocks = 0;
++    int warp_blocks = 0;
++    if (block_count_1d(batch, threads, &sample_blocks, "sfnn_pcalm sample") != 0 ||
++        block_count_1d(batch * 32, threads, &warp_blocks, "sfnn_pcalm warp") != 0) {
++        return -1;
++    }
++    // Initial predictions (u, pre3_ref, p3, e3 = 0, out = out_fwd).
++    sfnn_pcalm_tail_predict_v2_kernel<<<tail_blocks, tail_threads, 0, ctx->stream>>>(
++        l1->ptr, d2->ptr, l2_input->ptr, u->ptr, pre3_ref->ptr, p3->ptr, e3->ptr, d3->ptr, output->ptr, out->ptr,
++        w2_eff, b2_eff, w3_eff, buckets->ptr, batch, l1_hidden, l2_size, num_stacks, 1);
++    // Step size for this mini-batch (fixed, or the block-wise lambda_max estimate at the forward state).
++    if (eta_auto_scale > 0.0f) {
++        sfnn_pcalm_lambda2_v2_kernel<<<sample_blocks, threads, 0, ctx->stream>>>(
++            l1->ptr, u->ptr, p3->ptr, w2_eff, buckets->ptr, eta_buf->ptr, batch, l1_hidden, l2_size, num_stacks, rho);
++        sfnn_pcalm_lambda13_kernel<<<static_cast<unsigned int>(num_stacks), 256, 0, ctx->stream>>>(
++            w1_eff, w3_eff, eta_buf->ptr, ft_size, l1_out, l2_size, rho);
++    }
++    sfnn_pcalm_eta_finalize_kernel<<<1, 32, 0, ctx->stream>>>(eta_buf->ptr, eta, eta_auto_scale);
++    if (check_kernel_launch("sfnn_pcalm init / eta launch") != 0) {
 +        return -1;
 +    }
 +
-+    constexpr int threads = 256;
-+    float* w1_eff = l1w_eff_buf->ptr;
-+    float* b1_eff = l1b_eff_buf->ptr;
-+    {
-+        int eff_blocks = 0;
-+        if (block_count_1d(num_stacks * l1_out * ft_size, threads, &eff_blocks, "sfnn_pcalm_l1_effective_kernel") != 0) {
-+            return -1;
-+        }
-+        sfnn_pcalm_l1_effective_kernel<<<eff_blocks, threads, 0, ctx->stream>>>(
-+            l1w->ptr, w1f, l1b->ptr, b1f, w1_eff, b1_eff, ft_size, l1_out, num_stacks);
-+        if (check_kernel_launch("sfnn_pcalm_l1_effective_kernel launch") != 0) {
-+            return -1;
-+        }
-+    }
-+    int tail_blocks = 0;
-+    int ft_blocks = 0;
-+    if (block_count_1d(batch, threads, &tail_blocks, "sfnn_pcalm_tail_step_kernel") != 0 ||
-+        block_count_1d(batch * ft_size, threads, &ft_blocks, "sfnn_pcalm_ft_step_kernel") != 0) {
-+        return -1;
-+    }
 +    for (size_t t = 0; t < steps; ++t) {
 +        const int apply_dual = t > 0 ? 1 : 0;
-+        sfnn_pcalm_tail_step_kernel<<<tail_blocks, threads, 0, ctx->stream>>>(
-+            h2->ptr, lam2->ptr, g2->ptr, p2->ptr, u->ptr, h3->ptr, lam3->ptr, p3->ptr, lgrad->ptr,
-+            l2w->ptr, w2f, l3w->ptr, w3f, buckets->ptr, batch, l1_hidden, l2_size, num_stacks,
-+            static_cast<float>(batch), alpha, rho, eta, apply_dual);
-+        if (check_kernel_launch("sfnn_pcalm_tail_step_kernel launch") != 0) {
-+            return -1;
-+        }
-+        sfnn_pcalm_ft_step_kernel<<<ft_blocks, threads, 0, ctx->stream>>>(
-+            h1->ptr, lam1->ptr, combined->ptr, g2->ptr, w1_eff, nullptr, buckets->ptr, batch, ft_size, l1_out,
-+            num_stacks, alpha, rho, eta, apply_dual);
-+        if (check_kernel_launch("sfnn_pcalm_ft_step_kernel launch") != 0) {
-+            return -1;
-+        }
-+        if (sfnn_pcalm_predictions(
-+                ctx, ft_size, l1_hidden, l2_size, num_stacks, factorizer_king_axis_dim, factorizer_hand_axis_dim,
-+                batch, buckets->ptr, l1w->ptr, l1b->ptr, w1f, b1f, has_l1f, l2w->ptr, l2b->ptr, w2f, b2f, has_l2f,
-+                l3w->ptr, l3b->ptr, w3f, b3f, has_l3f, targets->ptr, entry_weights->ptr, output_inv_scale,
-+                w1_eff, b1_eff, h1->ptr, h2->ptr, h3->ptr, p2->ptr, u->ptr, p3->ptr, out->ptr, lps->ptr,
-+                lgrad->ptr) != 0) {
++        sfnn_pcalm_tail_step_v2_kernel<<<tail_blocks, tail_threads, 0, ctx->stream>>>(
++            d2->ptr, lam2->ptr, g2->ptr, q2->ptr, l1->ptr, u->ptr, d3->ptr, lam3->ptr, p3->ptr, e3->ptr, lgrad->ptr,
++            w2_eff, w3_eff, buckets->ptr, batch, l1_hidden, l2_size, num_stacks, static_cast<float>(batch), alpha, rho,
++            eta_buf->ptr, apply_dual);
++        sfnn_pcalm_ft_step_q2_kernel<<<warp_blocks, threads, 0, ctx->stream>>>(
++            d1->ptr, lam1->ptr, g2->ptr, w1_eff, q2->ptr, buckets->ptr, batch, ft_size, l1_out, num_stacks, alpha, rho,
++            eta_buf->ptr, apply_dual);
++        sfnn_pcalm_tail_predict_v2_kernel<<<tail_blocks, tail_threads, 0, ctx->stream>>>(
++            l1->ptr, d2->ptr, l2_input->ptr, u->ptr, pre3_ref->ptr, p3->ptr, e3->ptr, d3->ptr, output->ptr, out->ptr,
++            w2_eff, b2_eff, w3_eff, buckets->ptr, batch, l1_hidden, l2_size, num_stacks, 0);
++        loss_sigmoid_mse_reduce_kernel<<<sample_blocks, threads, 0, ctx->stream>>>(
++            out->ptr, targets->ptr, entry_weights->ptr, lps->ptr, lgrad->ptr, output_inv_scale, batch);
++        if (check_kernel_launch("sfnn_pcalm inference step launch") != 0) {
 +            return -1;
 +        }
 +    }
 +
 +    // Composite credit with the duals used by the final primal step.
 +    const float scale = -1.0f / static_cast<float>(batch);
-+    int blocks = 0;
-+    if (block_count_1d(batch * ft_size, threads, &blocks, "sfnn_pcalm_credit_kernel h1") != 0) {
++    if (block_count_1d(batch * ft_size, threads, &blocks, "sfnn_pcalm_credit_h1_kernel") != 0) {
 +        return -1;
 +    }
-+    sfnn_pcalm_credit_kernel<<<blocks, threads, 0, ctx->stream>>>(
-+        h1->ptr, lam1->ptr, combined->ptr, combined_gradients->ptr, batch * ft_size, rho, scale);
++    // delta_1 into combined_gradients; lam1 becomes the absolute settled h1 for the L1 reduction.
++    sfnn_pcalm_credit_h1_kernel<<<blocks, threads, 0, ctx->stream>>>(
++        d1->ptr, lam1->ptr, combined->ptr, combined_gradients->ptr, batch * ft_size, rho, scale);
 +    if (block_count_1d(batch * l1_out, threads, &blocks, "sfnn_pcalm_credit_kernel h2") != 0) {
 +        return -1;
 +    }
 +    sfnn_pcalm_credit_kernel<<<blocks, threads, 0, ctx->stream>>>(
-+        h2->ptr, lam2->ptr, p2->ptr, l1_gradients->ptr, batch * l1_out, rho, scale);
++        d2->ptr, q2->ptr, lam2->ptr, l1_gradients->ptr, batch * l1_out, rho, scale);
 +    if (block_count_1d(batch * l2_size, threads, &blocks, "sfnn_pcalm_credit_kernel h3") != 0) {
 +        return -1;
 +    }
 +    sfnn_pcalm_credit_kernel<<<blocks, threads, 0, ctx->stream>>>(
-+        h3->ptr, lam3->ptr, p3->ptr, l2_gradients->ptr, batch * l2_size, rho, scale);
-+    if (check_kernel_launch("sfnn_pcalm_credit_kernel launch") != 0) {
++        d3->ptr, e3->ptr, lam3->ptr, l2_gradients->ptr, batch * l2_size, rho, scale);
++    // lam3 is free now: absolute settled h3 = l2 + d3 for the L3 reduction.
++    sfnn_pcalm_add_kernel<<<blocks, threads, 0, ctx->stream>>>(l2->ptr, d3->ptr, lam3->ptr, batch * l2_size);
++    if (check_kernel_launch("sfnn_pcalm credit launch") != 0) {
 +        return -1;
 +    }
 +
@@ -620,9 +1190,9 @@ index e91bced0..ee2bf689 100644
 +            return -1;
 +        }
 +    }
-+    // Weight gradients: the BP parameter reductions with injected adjoints.
++    // Weight gradients: the BP parameter reductions with injected adjoints and settled activations.
 +    if (launch_sfnn_dense_param_reduce_tiled(
-+            ctx, h3->ptr, nullptr, lgrad->ptr, buckets->ptr, l3w_gradients->ptr, l3b_gradients->ptr,
++            ctx, lam3->ptr, nullptr, lgrad->ptr, buckets->ptr, l3w_gradients->ptr, l3b_gradients->ptr,
 +            has_l3f != 0 ? l3fw_gradients->ptr : nullptr, has_l3f != 0 ? l3fb_gradients->ptr : nullptr, batch,
 +            l2_size, 1, num_stacks, has_l3f, 0, 0, "pcalm dense reduce L3 params") != 0) {
 +        return -1;
@@ -634,7 +1204,7 @@ index e91bced0..ee2bf689 100644
 +        return -1;
 +    }
 +    if (launch_sfnn_dense_param_reduce_tiled(
-+            ctx, h1->ptr, nullptr, l1_gradients->ptr, buckets->ptr, l1w_gradients->ptr, l1b_gradients->ptr,
++            ctx, lam1->ptr, nullptr, l1_gradients->ptr, buckets->ptr, l1w_gradients->ptr, l1b_gradients->ptr,
 +            has_l1f != 0 ? l1fw_gradients->ptr : nullptr, has_l1f != 0 ? l1fb_gradients->ptr : nullptr, batch,
 +            ft_size, l1_out, num_stacks, has_l1f, 1, 0, "pcalm dense reduce L1 params") != 0) {
 +        return -1;
@@ -649,10 +1219,10 @@ index e91bced0..ee2bf689 100644
 +}
 diff --git a/crates/cuda_cpp/src/bin/pcalm_gradcheck.rs b/crates/cuda_cpp/src/bin/pcalm_gradcheck.rs
 new file mode 100644
-index 00000000..0523b52e
+index 00000000..6a2a9439
 --- /dev/null
 +++ b/crates/cuda_cpp/src/bin/pcalm_gradcheck.rs
-@@ -0,0 +1,198 @@
+@@ -0,0 +1,201 @@
 +//! fast_suisho experiment-011: gradient dump for validating the PC-ALM backward pass.
 +//!
 +//! Reads raw little-endian tensors written by `experiments/011-pcalm/m0/gradcheck.py` from `<dir>`:
@@ -663,7 +1233,7 @@ index 00000000..0523b52e
 +//! parameter gradients to `<out>/<name>.f32` plus `loss.txt`.
 +//!
 +//!   pcalm_gradcheck <dir> <out> bp
-+//!   pcalm_gradcheck <dir> <out> pcalm <steps> <alpha> <rho> <eta_h>
++//!   pcalm_gradcheck <dir> <out> pcalm <steps> <alpha> <rho> <eta_h | auto:<scale>>
 +
 +use std::fs;
 +use std::path::{Path, PathBuf};
@@ -800,12 +1370,13 @@ index 00000000..0523b52e
 +            &ctx, &batch, &weights, &forward, &loss, &backward, factorizer,
 +        )?,
 +        "pcalm" => {
-+            let config = SfnnPcalmConfig {
-+                steps: args[4].parse()?,
-+                alpha: args[5].parse()?,
-+                rho: args[6].parse()?,
-+                eta_h: args[7].parse()?,
++            // eta: a number (fixed) or `auto:<scale>`
++            let (eta_h, eta_auto_scale) = match args[7].strip_prefix("auto:") {
++                Some(scale) => (0.0, scale.parse()?),
++                None => (args[7].parse()?, 0.0),
 +            };
++            let config =
++                SfnnPcalmConfig { steps: args[4].parse()?, alpha: args[5].parse()?, rho: args[6].parse()?, eta_h, eta_auto_scale };
 +            let ws = SfnnPcalmWorkspace::new(&ctx, shape, batch_size)?;
 +            bulletou_cuda_cpp::sfnn_pcalm_backward_train_device(
 +                &ctx,
@@ -822,6 +1393,8 @@ index 00000000..0523b52e
 +                factorizer,
 +                config,
 +            )?;
++            let eta = ws.eta.download(&ctx)?;
++            fs::write(out.join("eta.txt"), format!("{} {} {} {}\n", eta[0], eta[1], eta[2], eta[3]))?;
 +        }
 +        other => return Err(format!("unknown mode {other}").into()),
 +    }
@@ -852,10 +1425,10 @@ index 00000000..0523b52e
 +    Ok(())
 +}
 diff --git a/crates/cuda_cpp/src/lib.rs b/crates/cuda_cpp/src/lib.rs
-index 9ccab528..033a7f3e 100644
+index 9ccab528..77cbf4ad 100644
 --- a/crates/cuda_cpp/src/lib.rs
 +++ b/crates/cuda_cpp/src/lib.rs
-@@ -3028,6 +3028,230 @@ fn sfnn_backward_device_impl(
+@@ -3028,6 +3028,245 @@ fn sfnn_backward_device_impl(
      check(rc)
  }
  
@@ -866,7 +1439,11 @@ index 9ccab528..033a7f3e 100644
 +    pub steps: usize,
 +    pub alpha: f32,
 +    pub rho: f32,
++    /// Fixed state step size (used when `eta_auto_scale <= 0`).
 +    pub eta_h: f32,
++    /// `> 0`: recompute eta every mini-batch as `eta_auto_scale / (1.05 * lambda_max estimate)` from the
++    /// current weights (the reference rule eta = 1 / lambda_max, tracked as the weights grow).
++    pub eta_auto_scale: f32,
 +}
 +
 +impl SfnnPcalmConfig {
@@ -880,55 +1457,66 @@ index 9ccab528..033a7f3e 100644
 +        if !(self.rho.is_finite() && self.rho >= 0.0) {
 +            return Err(CudaCppError::message("PC-ALM rho must be finite and >= 0"));
 +        }
-+        if !(self.eta_h.is_finite() && self.eta_h > 0.0) {
-+            return Err(CudaCppError::message("PC-ALM eta_h must be finite and > 0"));
++        if !(self.eta_auto_scale.is_finite() && self.eta_auto_scale >= 0.0) {
++            return Err(CudaCppError::message("PC-ALM eta_auto_scale must be finite and >= 0"));
++        }
++        if self.eta_auto_scale == 0.0 && !(self.eta_h.is_finite() && self.eta_h > 0.0) {
++            return Err(CudaCppError::message("PC-ALM eta_h must be finite and > 0 (or use eta_auto_scale)"));
 +        }
 +        Ok(())
 +    }
 +}
 +
-+/// Per-batch PC-ALM state buffers (states, duals, predictions). Not persisted in checkpoints:
-+/// the duals restart from zero for every mini-batch.
++/// Per-batch PC-ALM state buffers (offsets of the states from the forward pass, duals, predictions).
++/// Not persisted in checkpoints: the duals restart from zero for every mini-batch.
 +#[derive(Debug)]
 +pub struct SfnnPcalmWorkspace {
-+    pub h1: F32Buffer,
++    pub d1: F32Buffer,
 +    pub lam1: F32Buffer,
-+    pub h2: F32Buffer,
++    pub d2: F32Buffer,
 +    pub lam2: F32Buffer,
-+    pub p2: F32Buffer,
++    pub q2: F32Buffer,
 +    pub g2: F32Buffer,
 +    pub u: F32Buffer,
-+    pub h3: F32Buffer,
++    pub d3: F32Buffer,
 +    pub lam3: F32Buffer,
 +    pub p3: F32Buffer,
++    pub e3: F32Buffer,
++    pub pre3_ref: F32Buffer,
 +    pub out: F32Buffer,
 +    pub lgrad: F32Buffer,
 +    pub lps: F32Buffer,
-+    pub l1w_eff: F32Buffer,
-+    pub l1b_eff: F32Buffer,
++    pub w1_eff: F32Buffer,
++    pub eta: F32Buffer,
 +}
 +
 +impl SfnnPcalmWorkspace {
 +    pub fn new(ctx: &Context, shape: SfnnForwardShape, batch_size: usize) -> Result<Self> {
++        let b = batch_size;
 +        let l1_out = shape.l1_hidden + 1;
 +        let l2_in = shape.l1_hidden * 2;
-+        let ft = batch_size * shape.ft_size;
++        let ft = b * shape.ft_size;
 +        Ok(Self {
-+            h1: F32Buffer::new(ctx, ft)?,
++            d1: F32Buffer::new(ctx, ft)?,
 +            lam1: F32Buffer::new(ctx, ft)?,
-+            h2: F32Buffer::new(ctx, batch_size * l1_out)?,
-+            lam2: F32Buffer::new(ctx, batch_size * l1_out)?,
-+            p2: F32Buffer::new(ctx, batch_size * l1_out)?,
-+            g2: F32Buffer::new(ctx, batch_size * l1_out)?,
-+            u: F32Buffer::new(ctx, batch_size * l2_in)?,
-+            h3: F32Buffer::new(ctx, batch_size * shape.l2_size)?,
-+            lam3: F32Buffer::new(ctx, batch_size * shape.l2_size)?,
-+            p3: F32Buffer::new(ctx, batch_size * shape.l2_size)?,
-+            out: F32Buffer::new(ctx, batch_size)?,
-+            lgrad: F32Buffer::new(ctx, batch_size)?,
-+            lps: F32Buffer::new(ctx, batch_size)?,
-+            l1w_eff: F32Buffer::new(ctx, shape.num_stacks * l1_out * shape.ft_size)?,
-+            l1b_eff: F32Buffer::new(ctx, shape.num_stacks * l1_out)?,
++            d2: F32Buffer::new(ctx, b * l1_out)?,
++            lam2: F32Buffer::new(ctx, b * l1_out)?,
++            q2: F32Buffer::new(ctx, b * l1_out)?,
++            g2: F32Buffer::new(ctx, b * l1_out)?,
++            u: F32Buffer::new(ctx, b * l2_in)?,
++            d3: F32Buffer::new(ctx, b * shape.l2_size)?,
++            lam3: F32Buffer::new(ctx, b * shape.l2_size)?,
++            p3: F32Buffer::new(ctx, b * shape.l2_size)?,
++            e3: F32Buffer::new(ctx, b * shape.l2_size)?,
++            pre3_ref: F32Buffer::new(ctx, b * shape.l2_size)?,
++            out: F32Buffer::new(ctx, b)?,
++            lgrad: F32Buffer::new(ctx, b)?,
++            lps: F32Buffer::new(ctx, b)?,
++            w1_eff: F32Buffer::new(
++                ctx,
++                shape.num_stacks * (l1_out * shape.ft_size + shape.l2_size * l2_in + 2 * shape.l2_size),
++            )?,
++            eta: F32Buffer::new(ctx, 4)?,
 +        })
 +    }
 +}
@@ -986,9 +1574,9 @@ index 9ccab528..033a7f3e 100644
 +            _ => Err(CudaCppError::message("PC-ALM: shared factorizer tensors are missing or partial")),
 +        }
 +    };
-+    let (l1fw, l1fb, has_l1f) = pick(&weights.l1fw, &weights.l1fb)?;
++    let (l1fw, _l1fb, has_l1f) = pick(&weights.l1fw, &weights.l1fb)?;
 +    let (l2fw, l2fb, has_l2f) = pick(&weights.l2fw, &weights.l2fb)?;
-+    let (l3fw, l3fb, has_l3f) = pick(&weights.l3fw, &weights.l3fb)?;
++    let (l3fw, _l3fb, has_l3f) = pick(&weights.l3fw, &weights.l3fb)?;
 +    // SAFETY: all device buffers have been length-validated; the backend validates the PC-ALM buffer lengths.
 +    let rc = unsafe {
 +        ffi::bulletou_cuda_cpp_sfnn_pcalm_backward_train_device(
@@ -1014,10 +1602,9 @@ index 9ccab528..033a7f3e 100644
 +            forward.l1.as_ptr(),
 +            forward.l2_input.as_ptr(),
 +            forward.l2.as_ptr(),
++            forward.output.as_ptr(),
 +            weights.l1w.as_ptr(),
-+            weights.l1b.as_ptr(),
 +            l1fw,
-+            l1fb,
 +            has_l1f,
 +            weights.l2w.as_ptr(),
 +            weights.l2b.as_ptr(),
@@ -1025,29 +1612,29 @@ index 9ccab528..033a7f3e 100644
 +            l2fb,
 +            has_l2f,
 +            weights.l3w.as_ptr(),
-+            weights.l3b.as_ptr(),
 +            l3fw,
-+            l3fb,
 +            has_l3f,
 +            targets.as_ptr(),
 +            entry_weights.as_ptr(),
 +            output_inv_scale,
 +            loss.mean_output_gradients.as_ptr(),
-+            pcalm.h1.as_ptr(),
++            pcalm.d1.as_ptr(),
 +            pcalm.lam1.as_ptr(),
-+            pcalm.h2.as_ptr(),
++            pcalm.d2.as_ptr(),
 +            pcalm.lam2.as_ptr(),
-+            pcalm.p2.as_ptr(),
++            pcalm.q2.as_ptr(),
 +            pcalm.g2.as_ptr(),
 +            pcalm.u.as_ptr(),
-+            pcalm.h3.as_ptr(),
++            pcalm.d3.as_ptr(),
 +            pcalm.lam3.as_ptr(),
 +            pcalm.p3.as_ptr(),
++            pcalm.e3.as_ptr(),
++            pcalm.pre3_ref.as_ptr(),
 +            pcalm.out.as_ptr(),
 +            pcalm.lgrad.as_ptr(),
 +            pcalm.lps.as_ptr(),
-+            pcalm.l1w_eff.as_ptr(),
-+            pcalm.l1b_eff.as_ptr(),
++            pcalm.w1_eff.as_ptr(),
++            pcalm.eta.as_ptr(),
 +            backward.l2_gradients.as_ptr(),
 +            backward.l1_gradients.as_ptr(),
 +            backward.combined_gradients.as_ptr(),
@@ -1078,6 +1665,7 @@ index 9ccab528..033a7f3e 100644
 +            config.alpha,
 +            config.rho,
 +            config.eta_h,
++            config.eta_auto_scale,
 +        )
 +    };
 +    check(rc)
@@ -1086,7 +1674,7 @@ index 9ccab528..033a7f3e 100644
  #[derive(Debug)]
  pub struct RangerParamState {
      pub momentum: F32Buffer,
-@@ -4964,6 +5188,8 @@ pub struct SfnnTrainStepRunner {
+@@ -4964,6 +5203,8 @@ pub struct SfnnTrainStepRunner {
      pub backward_workspace: SfnnBackwardWorkspace,
      pub upload_slots: Vec<SfnnTrainStepUploadSlot>,
      pub next_upload_slot: usize,
@@ -1095,7 +1683,7 @@ index 9ccab528..033a7f3e 100644
  }
  
  impl SfnnTrainStepRunner {
-@@ -5069,9 +5295,57 @@ impl SfnnTrainStepRunner {
+@@ -5069,9 +5310,57 @@ impl SfnnTrainStepRunner {
              backward_workspace,
              upload_slots,
              next_upload_slot: 0,
@@ -1153,7 +1741,7 @@ index 9ccab528..033a7f3e 100644
      pub fn step(
          &mut self,
          ctx: &Context,
-@@ -5137,14 +5411,13 @@ impl SfnnTrainStepRunner {
+@@ -5137,14 +5426,13 @@ impl SfnnTrainStepRunner {
              &self.loss_workspace,
              finalize_loss,
          )?;
@@ -1173,7 +1761,7 @@ index 9ccab528..033a7f3e 100644
          )?;
          self.update_weights(ctx, params)
      }
-@@ -5218,14 +5491,13 @@ impl SfnnTrainStepRunner {
+@@ -5218,14 +5506,13 @@ impl SfnnTrainStepRunner {
                  &self.loss_workspace,
                  finalize_loss,
              )?;
@@ -1193,7 +1781,7 @@ index 9ccab528..033a7f3e 100644
              )?;
          }
          self.update_weights(ctx, params)?;
-@@ -5283,15 +5555,28 @@ impl SfnnTrainStepRunner {
+@@ -5283,15 +5570,28 @@ impl SfnnTrainStepRunner {
              &self.loss_workspace,
          )?;
          after_loss.record(ctx)?;
@@ -1231,7 +1819,7 @@ index 9ccab528..033a7f3e 100644
          after_backward.record(ctx)?;
          self.update_weights(ctx, params)?;
          stop.record(ctx)?;
-@@ -6299,6 +6584,96 @@ mod ffi {
+@@ -6299,6 +6599,96 @@ mod ffi {
              l3axw_gradients: *mut BulletOuCudaCppF32Buffer,
              l3axb_gradients: *mut BulletOuCudaCppF32Buffer,
          ) -> i32;
@@ -1259,10 +1847,9 @@ index 9ccab528..033a7f3e 100644
 +            l1: *mut BulletOuCudaCppF32Buffer,
 +            l2_input: *mut BulletOuCudaCppF32Buffer,
 +            l2: *mut BulletOuCudaCppF32Buffer,
++            output: *mut BulletOuCudaCppF32Buffer,
 +            l1w: *mut BulletOuCudaCppF32Buffer,
-+            l1b: *mut BulletOuCudaCppF32Buffer,
 +            l1fw: *mut BulletOuCudaCppF32Buffer,
-+            l1fb: *mut BulletOuCudaCppF32Buffer,
 +            has_l1f: i32,
 +            l2w: *mut BulletOuCudaCppF32Buffer,
 +            l2b: *mut BulletOuCudaCppF32Buffer,
@@ -1270,29 +1857,29 @@ index 9ccab528..033a7f3e 100644
 +            l2fb: *mut BulletOuCudaCppF32Buffer,
 +            has_l2f: i32,
 +            l3w: *mut BulletOuCudaCppF32Buffer,
-+            l3b: *mut BulletOuCudaCppF32Buffer,
 +            l3fw: *mut BulletOuCudaCppF32Buffer,
-+            l3fb: *mut BulletOuCudaCppF32Buffer,
 +            has_l3f: i32,
 +            targets: *mut BulletOuCudaCppF32Buffer,
 +            entry_weights: *mut BulletOuCudaCppF32Buffer,
 +            output_inv_scale: f32,
 +            mean_output_gradients: *mut BulletOuCudaCppF32Buffer,
-+            h1: *mut BulletOuCudaCppF32Buffer,
++            d1: *mut BulletOuCudaCppF32Buffer,
 +            lam1: *mut BulletOuCudaCppF32Buffer,
-+            h2: *mut BulletOuCudaCppF32Buffer,
++            d2: *mut BulletOuCudaCppF32Buffer,
 +            lam2: *mut BulletOuCudaCppF32Buffer,
-+            p2: *mut BulletOuCudaCppF32Buffer,
++            q2: *mut BulletOuCudaCppF32Buffer,
 +            g2: *mut BulletOuCudaCppF32Buffer,
 +            u: *mut BulletOuCudaCppF32Buffer,
-+            h3: *mut BulletOuCudaCppF32Buffer,
++            d3: *mut BulletOuCudaCppF32Buffer,
 +            lam3: *mut BulletOuCudaCppF32Buffer,
 +            p3: *mut BulletOuCudaCppF32Buffer,
++            e3: *mut BulletOuCudaCppF32Buffer,
++            pre3_ref: *mut BulletOuCudaCppF32Buffer,
 +            out: *mut BulletOuCudaCppF32Buffer,
 +            lgrad: *mut BulletOuCudaCppF32Buffer,
 +            lps: *mut BulletOuCudaCppF32Buffer,
-+            l1w_eff: *mut BulletOuCudaCppF32Buffer,
-+            l1b_eff: *mut BulletOuCudaCppF32Buffer,
++            w1_eff: *mut BulletOuCudaCppF32Buffer,
++            eta_buf: *mut BulletOuCudaCppF32Buffer,
 +            l2_gradients: *mut BulletOuCudaCppF32Buffer,
 +            l1_gradients: *mut BulletOuCudaCppF32Buffer,
 +            combined_gradients: *mut BulletOuCudaCppF32Buffer,
@@ -1323,13 +1910,14 @@ index 9ccab528..033a7f3e 100644
 +            alpha: f32,
 +            rho: f32,
 +            eta: f32,
++            eta_auto_scale: f32,
 +        ) -> i32;
 +
          pub fn bulletou_cuda_cpp_sfnn_backward_train_device(
              ctx: *mut BulletOuCudaCppContext,
              input_size: usize,
 diff --git a/examples/bulletou.rs b/examples/bulletou.rs
-index c0bba748..21c39d9a 100644
+index c0bba748..9c657145 100644
 --- a/examples/bulletou.rs
 +++ b/examples/bulletou.rs
 @@ -1444,6 +1444,16 @@ impl PlateauMonitor {
@@ -1349,7 +1937,7 @@ index c0bba748..21c39d9a 100644
  #[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
  #[clap(rename_all = "lowercase")]
  enum TestSampleMode {
-@@ -2602,6 +2612,29 @@ struct Args {
+@@ -2602,6 +2612,34 @@ struct Args {
      #[arg(long = "no-sfnn-factorized", conflicts_with = "sfnn_factorizer")]
      no_sfnn_factorized: bool,
  
@@ -1372,14 +1960,19 @@ index c0bba748..21c39d9a 100644
 +    #[arg(long, default_value = "1.0")]
 +    pcalm_rho: f32,
 +
-+    /// PC-ALM per-sample state step size eta_h. Required with `--credit pcalm`.
-+    #[arg(long)]
++    /// PC-ALM per-sample state step size eta_h (fixed). Use either this or `--pcalm-eta-auto`.
++    #[arg(long, conflicts_with = "pcalm_eta_auto")]
 +    pcalm_eta_h: Option<f32>,
++
++    /// PC-ALM automatic state step size: every mini-batch, eta_h = SCALE / (1.05 * lambda_max estimate)
++    /// from the current weights (the reference rule eta = 1 / lambda_max, tracked as the weights grow).
++    #[arg(long)]
++    pcalm_eta_auto: Option<f32>,
 +
      /// Held-out test set (.hcpe / .psv / .bin) for sign-agreement validation
      /// during training. When set, the trainer runs validation after
      /// each validation event (= every `--validation-rate` superbatches,
-@@ -2797,6 +2830,21 @@ impl Args {
+@@ -2797,6 +2835,21 @@ impl Args {
          if self.sfnn_factorizer.is_some() && !eval_type.uses_layerstack() {
              return Err("--sfnn-factorizer currently applies to SFNN / LayerStack eval types only".to_string());
          }
@@ -1401,7 +1994,7 @@ index c0bba748..21c39d9a 100644
          if !(self.loss_pow_exp.is_finite() && self.loss_pow_exp >= 1.0) {
              return Err(format!("--loss-pow-exp must be finite and >= 1 (got {})", self.loss_pow_exp));
          }
-@@ -5993,6 +6041,27 @@ fn run_cuda_cpp_sfnn_direct_steps(args: &Args, feature_kind: CudaCppSfnnFeatureK
+@@ -5993,6 +6046,33 @@ fn run_cuda_cpp_sfnn_direct_steps(args: &Args, feature_kind: CudaCppSfnnFeatureK
          ),
      }
      .map_err(|e| e.to_string())?;
@@ -1411,7 +2004,13 @@ index c0bba748..21c39d9a 100644
 +            runner
 +                .enable_pcalm(
 +                    &ctx,
-+                    bulletou_cuda_cpp::SfnnPcalmConfig { steps: p.steps, alpha: p.alpha, rho: p.rho, eta_h: p.eta_h },
++                    bulletou_cuda_cpp::SfnnPcalmConfig {
++                        steps: p.steps,
++                        alpha: p.alpha,
++                        rho: p.rho,
++                        eta_h: p.eta_h,
++                        eta_auto_scale: p.eta_auto_scale,
++                    },
 +                )
 +                .map_err(|e| e.to_string())?;
 +        }
@@ -1420,8 +2019,8 @@ index c0bba748..21c39d9a 100644
 +    enable_pcalm(&mut runner)?;
 +    if let Some(p) = pcalm_settings {
 +        eprintln!(
-+            "  credit = PC-ALM (fast_suisho experiment-011): steps={} alpha={} rho={} eta_h={}",
-+            p.steps, p.alpha, p.rho, p.eta_h
++            "  credit = PC-ALM (fast_suisho experiment-011): steps={} alpha={} rho={} eta_h={} eta_auto_scale={}",
++            p.steps, p.alpha, p.rho, p.eta_h, p.eta_auto_scale
 +        );
 +    } else {
 +        eprintln!("  credit = backprop");
@@ -1429,7 +2028,7 @@ index c0bba748..21c39d9a 100644
      let upload_ctx = Context::new(device).map_err(|e| e.to_string())?;
  
      let loss_kind = cuda_cpp_scalar_loss_kind(args);
-@@ -6195,6 +6264,7 @@ fn run_cuda_cpp_sfnn_direct_steps(args: &Args, feature_kind: CudaCppSfnnFeatureK
+@@ -6195,6 +6275,7 @@ fn run_cuda_cpp_sfnn_direct_steps(args: &Args, feature_kind: CudaCppSfnnFeatureK
                          factorizer_active,
                      )
                      .map_err(|e| e.to_string())?;
@@ -1437,7 +2036,7 @@ index c0bba748..21c39d9a 100644
                      completed_steps = snapshot_completed_steps;
                      excluded_elapsed = excluded_elapsed.saturating_add(checkpoint_started.elapsed());
                  } else {
-@@ -10531,6 +10601,35 @@ const RESUME_CONFIG_NAME: &str = "resume-config.txt";
+@@ -10531,6 +10612,49 @@ const RESUME_CONFIG_NAME: &str = "resume-config.txt";
  /// continuing a trained model on a new teacher is a supported workflow, but
  /// changing controls such as `--superbatches` or LR policy should require an
  /// explicit `--resume`.
@@ -1448,13 +2047,18 @@ index c0bba748..21c39d9a 100644
 +    alpha: f32,
 +    rho: f32,
 +    eta_h: f32,
++    eta_auto_scale: f32,
 +}
 +
 +fn pcalm_config(args: &Args) -> Result<Option<PcalmSettings>, String> {
 +    if args.credit != CreditMode::Pcalm {
 +        return Ok(None);
 +    }
-+    let eta_h = args.pcalm_eta_h.ok_or_else(|| "--credit pcalm requires --pcalm-eta-h".to_string())?;
++    let (eta_h, eta_auto_scale) = match (args.pcalm_eta_h, args.pcalm_eta_auto) {
++        (Some(eta), None) => (eta, 0.0),
++        (None, Some(scale)) => (0.0, scale),
++        _ => return Err("--credit pcalm requires exactly one of --pcalm-eta-h / --pcalm-eta-auto".to_string()),
++    };
 +    if args.pcalm_steps == 0 {
 +        return Err("--pcalm-steps must be at least 1".to_string());
 +    }
@@ -1464,16 +2068,25 @@ index c0bba748..21c39d9a 100644
 +    if !(args.pcalm_rho.is_finite() && args.pcalm_rho >= 0.0) {
 +        return Err("--pcalm-rho must be finite and >= 0".to_string());
 +    }
-+    if !(eta_h.is_finite() && eta_h > 0.0) {
++    if eta_auto_scale == 0.0 && !(eta_h.is_finite() && eta_h > 0.0) {
 +        return Err("--pcalm-eta-h must be finite and > 0".to_string());
 +    }
-+    Ok(Some(PcalmSettings { steps: args.pcalm_steps, alpha: args.pcalm_alpha, rho: args.pcalm_rho, eta_h }))
++    if !(eta_auto_scale.is_finite() && eta_auto_scale >= 0.0) || args.pcalm_eta_auto == Some(0.0) {
++        return Err("--pcalm-eta-auto must be finite and > 0".to_string());
++    }
++    Ok(Some(PcalmSettings {
++        steps: args.pcalm_steps,
++        alpha: args.pcalm_alpha,
++        rho: args.pcalm_rho,
++        eta_h,
++        eta_auto_scale,
++    }))
 +}
 +
  fn resume_signature(args: &Args) -> String {
      let positions_per_superbatch = effective_positions_per_superbatch(args).unwrap_or(DEFAULT_POSITIONS_PER_SUPERBATCH);
      let batches_per_superbatch = effective_batches_per_superbatch(args).unwrap_or(1);
-@@ -10540,7 +10639,7 @@ fn resume_signature(args: &Args) -> String {
+@@ -10540,7 +10664,7 @@ fn resume_signature(args: &Args) -> String {
      let superbatches = args.superbatches.map(|n| n.to_string()).unwrap_or_else(|| "none".to_string());
      let test_teacher =
          args.test_teacher.as_ref().map(|p| p.display().to_string()).unwrap_or_else(|| "none".to_string());
@@ -1482,7 +2095,7 @@ index c0bba748..21c39d9a 100644
          "schema=bulletou-resume-v3".to_string(),
          format!("backend={}", args.backend.cli_name()),
          format!("eval_type={}", args.eval_type().cli_name()),
-@@ -10592,9 +10691,18 @@ fn resume_signature(args: &Args) -> String {
+@@ -10592,9 +10716,19 @@ fn resume_signature(args: &Args) -> String {
          format!("test_batch_size={}", args.test_batch_size),
          format!("test_sample={}", args.test_sample.cli_name()),
          format!("test_seed={}", args.test_seed),
@@ -1493,11 +2106,12 @@ index c0bba748..21c39d9a 100644
 +    // fast_suisho experiment-011: BP signatures stay identical to upstream; PC-ALM runs add one line.
 +    if args.credit == CreditMode::Pcalm {
 +        lines.push(format!(
-+            "credit=pcalm steps={} alpha={:.9} rho={:.9} eta_h={:.9}",
++            "credit=pcalm steps={} alpha={:.9} rho={:.9} eta_h={:.9} eta_auto={:.9}",
 +            args.pcalm_steps,
 +            args.pcalm_alpha,
 +            args.pcalm_rho,
-+            args.pcalm_eta_h.unwrap_or(f32::NAN)
++            args.pcalm_eta_h.unwrap_or(f32::NAN),
++            args.pcalm_eta_auto.unwrap_or(f32::NAN)
 +        ));
 +    }
 +    lines.join("\n") + "\n"

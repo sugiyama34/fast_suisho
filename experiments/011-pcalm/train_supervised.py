@@ -4,8 +4,8 @@
 summary-learn.log の新しい行を W&B に流す。
 
 W&B: entity `suisho`、project `pcalm_vs_backprop`、group `011-pcalm` (環境変数で上書き可)。
-API キーがこのプロセスの環境に無い場合は offline で記録し、後で `uv run wandb sync wandb/offline-run-*` で送る
-(キーはリポジトリ・settings.json に置かない, 2026-09-28 ユーザー決定)。
+API キーは ``wandb login`` で ~/.netrc に置いたもの (2026-10-06 ユーザー: 環境変数には置かない) か環境変数。
+どちらも無い場合は offline で記録し、後で `uv run wandb sync wandb/offline-run-*` で送る (キーはリポジトリ・settings.json に置かない)。
 
 使い方:
     uv run python experiments/011-pcalm/train_supervised.py --arm s-bp-lr1 --gpu <MIG UUID>
@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import netrc
 import os
 import signal
 import subprocess
@@ -52,6 +53,16 @@ CONFIG = {
 }
 
 
+def wandb_has_credentials() -> bool:
+    """API キーが環境変数か ~/.netrc (``wandb login``) にあるか。値は読まない・表示しない。"""
+    if os.environ.get("WANDB_API_KEY"):
+        return True
+    try:
+        return netrc.netrc().authenticators("api.wandb.ai") is not None
+    except (FileNotFoundError, netrc.NetrcParseError):
+        return False
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--arm", required=True, help="arms.py の文法 (例 s-bp-lr1)")
@@ -67,7 +78,7 @@ def main() -> None:
     os.environ.setdefault("WANDB_RUN_GROUP", EXPERIMENT)
     # settings.json の既定 project (data_ablation_study) より 011 の project を優先する
     os.environ["WANDB_PROJECT"] = os.environ.get("WANDB_PROJECT_011", "pcalm_vs_backprop")
-    if not os.environ.get("WANDB_API_KEY"):
+    if not wandb_has_credentials():
         os.environ.setdefault("WANDB_MODE", "offline")
 
     arm = parse(args.arm)
