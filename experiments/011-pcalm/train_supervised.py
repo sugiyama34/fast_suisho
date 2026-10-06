@@ -105,10 +105,14 @@ def main() -> None:
 
     with init_run(
         EXPERIMENT,
-        config={**config, "display_name": display_name(arm)},
+        config={
+            **config,
+            "run_name": display_name(arm),
+            "checkpoint_dir": f"data/bulletou/checkpoints/{out_name}",
+        },
         tags=[args.arm, arm.method, arm.scale],
         smoke=args.smoke,
-        display_name=display_name(arm) + (" (smoke)" if args.smoke else ""),
+        name=display_name(arm) + ("-smoke" if args.smoke else ""),
     ) as run:
         print(f"wandb run: {getattr(run.run, 'url', None) or run.run.name}", flush=True)
         env = {**os.environ, "SMOKE": "1"} if args.smoke else None

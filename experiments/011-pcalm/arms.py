@@ -103,7 +103,7 @@ class Arm:
 
 
 def display_name(arm: Arm) -> str:
-    """W&B の run 名: arm 名 (= checkpoint のフォルダ名から ``011-`` を除いたもの) の規模を書き下したもの。
+    """W&B の run 名 (docs/wandb-guide.md §3.1): arm 名 (= checkpoint のフォルダ名から ``011-`` を除いたもの) の規模を書き下したもの。
 
     例: ``s-bp-lr1`` → ``small-bp-lr1``, ``s-pcalm-T4-a1.5-etaA0.75`` → ``small-pcalm-T4-a1.5-etaA0.75``,
     ``f-bp-rot`` → ``full-bp-rot`` (2026-10-06 ユーザー決定)。全設定は W&B の config に残る。
@@ -201,7 +201,7 @@ def main() -> None:
     else:
         print(
             json.dumps(
-                {**asdict(arm), "credit_args": arm.credit_args, "display_name": display_name(arm)},
+                {**asdict(arm), "credit_args": arm.credit_args, "run_name": display_name(arm)},
                 indent=2,
             )
         )
