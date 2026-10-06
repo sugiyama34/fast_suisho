@@ -16,4 +16,4 @@
 | 10-06 | `s-bp-lr1` と `s-bp-lr1-rot` の W&B run が「failed」になっているのは、学習中に `run_training.sh` を書き換えたため最後の `echo` が壊れたもの (学習と checkpoint は正常終了)。以後スクリプトは一時ファイルに書いて `mv` で置き換える | 事故の記録 | Claude |
 | 10-06 | W&B: ユーザーが kajiki で `wandb login` (~/.netrc) を行い、環境変数には置かない方針。`train_supervised.py` は ~/.netrc の資格情報も見て online で記録する。offline だった 2 run は `wandb sync` 済み | ユーザー | ユーザー |
 | 10-06 | suzuki からのファイル (009 のエンジン `423b6b1c…`, full-e12/16/20 の nn.bin, full-e1/16 の state.bin, full-e16 @ 48 の棋譜, B_s0) を受け取り、sha256 を確認して配置 (`xfer/MANIFEST-from-suzuki.sha256`) | ユーザーが転送 | ユーザー / Claude |
-| 10-06 | W&B の run 名を人が読める形にする (ユーザー: 少し長くてよいが長すぎない)。`011 <small/full> <BP/PC-ALM/PC> <既定と違う設定>` (例: `011 small PC-ALM T=4`, `011 small BP lr×0.5`, `011 full BP replicate`)。全設定と arm 名は config に残る。既存の run も API で改名 | ユーザー | ユーザー |
+| 10-06 | W&B の run 名は arm 名 (フォルダ名から `011-` を除いたもの) の規模を書き下した形: `small-bp-lr1`, `small-pcalm-T4`, `full-bp-rot` など。全設定は config に残る。既存の run も API で改名。フォルダ名・arm 名 (`s-` / `f-`) は変えない | ユーザー | ユーザー |
