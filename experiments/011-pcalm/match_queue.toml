@@ -17,6 +17,10 @@
 # エンジンは kajiki のビルド (a5f519d2, V9.60 + finny.patch, AVX2)。調整対局は 1 つの系列の中の相対比較なので、
 # 009 のバイナリ (423b6b1c, suzuki から複製待ち) が届くかどうかによらず、この系列はすべて kajiki のビルドで揃える。
 # 本番 (M4) の対局は 009 のバイナリを使う
+#
+# PC-ALM / PC のネットは出力側を 1/k に縮めた nn.bin (export_rescaled.py, rescale_watch.py が自動で作る,
+# /mnt/D/sugiyama/011/rescaled/) を使い、FV_SCALE も 1/k (k = 2 なら 48 → 24) にして探索での評価値を揃える。
+# BulletOu の書き出しのままだと L3 の実効重みが int8 の範囲を超えて切り詰められる (notes/m0.md)。BP のネットは k = 1 (元のまま)
 
 [[job]]
 name = "tune-s-bp-lr1-e1@48-vs-bp-rep-e1@48-300k"
@@ -103,38 +107,62 @@ engine = "~/engines/yane-9133c527-finny-avx2/YaneuraOu-by-gcc"
 note = "M2: PC-ALM 段階 A (T, α=1, ρ=1, η 自動, gn)"
 
 [[job]]
-name = "tune-s-pcalm-T4-gn-e1@48-vs-bp-rep-e1@48-300k"
-a = "011-s-pcalm-T4-gn/0001"
-a_fv = 48
+name = "tune-s-pcalm-T2-gn-e1x@24-vs-bp-rep-e1@48-300k"
+a = "/mnt/D/sugiyama/011/rescaled/011-s-pcalm-T2-gn-e1"
+a_fv = 24
 b = "011-s-bp-lr1-rot/0001"
 b_fv = 48
 nodes = 300000
 pairs = 300
-priority = 15
+priority = 12
 engine = "~/engines/yane-9133c527-finny-avx2/YaneuraOu-by-gcc"
-note = "M2: PC-ALM 段階 A (T, α=1, ρ=1, η 自動, gn)"
+note = "M2: PC-ALM 段階 A (gn)。出力側 1/2 の書き出し (k=2), FV_SCALE 24 = 元の 48 相当"
 
 [[job]]
-name = "tune-s-pcalm-T8-gn-e1@48-vs-bp-rep-e1@48-300k"
-a = "011-s-pcalm-T8-gn/0001"
-a_fv = 48
+name = "tune-s-pcalm-T2-e1x@24-vs-bp-rep-e1@48-300k"
+a = "/mnt/D/sugiyama/011/rescaled/011-s-pcalm-T2-e1"
+a_fv = 24
 b = "011-s-bp-lr1-rot/0001"
 b_fv = 48
 nodes = 300000
 pairs = 300
-priority = 15
+priority = 18
 engine = "~/engines/yane-9133c527-finny-avx2/YaneuraOu-by-gcc"
-note = "M2: PC-ALM 段階 A (T, α=1, ρ=1, η 自動, gn)"
+note = "参考: 旧方式 (固定 epsilon)。出力側 1/2 の書き出し (k=2)。書き出しのままの対局は全敗 (int8 の範囲外)"
 
 [[job]]
-name = "tune-s-pcalm-T3-gn-e1@48-vs-bp-rep-e1@48-300k"
-a = "011-s-pcalm-T3-gn/0001"
-a_fv = 48
+name = "tune-s-pcalm-T4-gn-e1x@24-vs-bp-rep-e1@48-300k"
+a = "/mnt/D/sugiyama/011/rescaled/011-s-pcalm-T4-gn-e1"
+a_fv = 24
 b = "011-s-bp-lr1-rot/0001"
 b_fv = 48
 nodes = 300000
 pairs = 300
 priority = 15
 engine = "~/engines/yane-9133c527-finny-avx2/YaneuraOu-by-gcc"
-note = "M2: PC-ALM 段階 A (T, α=1, ρ=1, η 自動, gn)"
+note = "M2: PC-ALM 段階 A (gn)。出力側 1/2 の書き出し (k=2), FV_SCALE 24 = 元の 48 相当"
+
+[[job]]
+name = "tune-s-pcalm-T8-gn-e1x@24-vs-bp-rep-e1@48-300k"
+a = "/mnt/D/sugiyama/011/rescaled/011-s-pcalm-T8-gn-e1"
+a_fv = 24
+b = "011-s-bp-lr1-rot/0001"
+b_fv = 48
+nodes = 300000
+pairs = 300
+priority = 15
+engine = "~/engines/yane-9133c527-finny-avx2/YaneuraOu-by-gcc"
+note = "M2: PC-ALM 段階 A (gn)。出力側 1/2 の書き出し (k=2), FV_SCALE 24 = 元の 48 相当"
+
+[[job]]
+name = "tune-s-pcalm-T3-gn-e1x@24-vs-bp-rep-e1@48-300k"
+a = "/mnt/D/sugiyama/011/rescaled/011-s-pcalm-T3-gn-e1"
+a_fv = 24
+b = "011-s-bp-lr1-rot/0001"
+b_fv = 48
+nodes = 300000
+pairs = 300
+priority = 15
+engine = "~/engines/yane-9133c527-finny-avx2/YaneuraOu-by-gcc"
+note = "M2: PC-ALM 段階 A (gn)。出力側 1/2 の書き出し (k=2), FV_SCALE 24 = 元の 48 相当"
 
