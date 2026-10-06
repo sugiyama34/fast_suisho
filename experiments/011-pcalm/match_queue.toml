@@ -190,3 +190,27 @@ priority = 25
 engine = "~/engines/yane-9133c527-finny-avx2/YaneuraOu-by-gcc"
 note = "M2: PC (α=0) の参照 arm (gn)。出力側 1/2 の書き出し (k=2), FV_SCALE 24"
 
+[[job]]
+name = "tune-s-bp-lr0.7-lrmin0.3-e1@48-vs-bp-rep-e1@48-300k"
+a = "011-s-bp-lr0.7-lrmin0.3/0001"
+a_fv = 48
+b = "011-s-bp-lr1-rot/0001"
+b_fv = 48
+nodes = 300000
+pairs = 300
+priority = 20
+engine = "~/engines/yane-9133c527-finny-avx2/YaneuraOu-by-gcc"
+note = "M2: BP 段階 2 (最良の LR ×0.7 で lr-min の倍率)"
+
+[[job]]
+name = "tune-s-bp-lr0.7-lrmin3-e1@48-vs-bp-rep-e1@48-300k"
+a = "011-s-bp-lr0.7-lrmin3/0001"
+a_fv = 48
+b = "011-s-bp-lr1-rot/0001"
+b_fv = 48
+nodes = 300000
+pairs = 300
+priority = 20
+engine = "~/engines/yane-9133c527-finny-avx2/YaneuraOu-by-gcc"
+note = "M2: BP 段階 2 (最良の LR ×0.7 で lr-min の倍率)"
+
