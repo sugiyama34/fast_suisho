@@ -88,11 +88,11 @@ nodes = 300000
 pairs = 300
 priority = 15
 engine = "~/engines/yane-9133c527-finny-avx2/YaneuraOu-by-gcc"
-note = "M2: PC-ALM 段階 A (T, α=1, ρ=1, η 自動, ε 較正)"
+note = "M2: PC-ALM の旧方式 (固定 epsilon 表, FT が epsilon に潰れた)。調整の候補ではなく参考"
 
 [[job]]
-name = "tune-s-pcalm-T3-e1@48-vs-bp-rep-e1@48-300k"
-a = "011-s-pcalm-T3/0001"
+name = "tune-s-pcalm-T2-gn-e1@48-vs-bp-rep-e1@48-300k"
+a = "011-s-pcalm-T2-gn/0001"
 a_fv = 48
 b = "011-s-bp-lr1-rot/0001"
 b_fv = 48
@@ -100,11 +100,11 @@ nodes = 300000
 pairs = 300
 priority = 15
 engine = "~/engines/yane-9133c527-finny-avx2/YaneuraOu-by-gcc"
-note = "M2: PC-ALM 段階 A (T, α=1, ρ=1, η 自動, ε 較正)"
+note = "M2: PC-ALM 段階 A (T, α=1, ρ=1, η 自動, gn)"
 
 [[job]]
-name = "tune-s-pcalm-T4-e1@48-vs-bp-rep-e1@48-300k"
-a = "011-s-pcalm-T4/0001"
+name = "tune-s-pcalm-T4-gn-e1@48-vs-bp-rep-e1@48-300k"
+a = "011-s-pcalm-T4-gn/0001"
 a_fv = 48
 b = "011-s-bp-lr1-rot/0001"
 b_fv = 48
@@ -112,11 +112,11 @@ nodes = 300000
 pairs = 300
 priority = 15
 engine = "~/engines/yane-9133c527-finny-avx2/YaneuraOu-by-gcc"
-note = "M2: PC-ALM 段階 A (T, α=1, ρ=1, η 自動, ε 較正)"
+note = "M2: PC-ALM 段階 A (T, α=1, ρ=1, η 自動, gn)"
 
 [[job]]
-name = "tune-s-pcalm-T8-e1@48-vs-bp-rep-e1@48-300k"
-a = "011-s-pcalm-T8/0001"
+name = "tune-s-pcalm-T8-gn-e1@48-vs-bp-rep-e1@48-300k"
+a = "011-s-pcalm-T8-gn/0001"
 a_fv = 48
 b = "011-s-bp-lr1-rot/0001"
 b_fv = 48
@@ -124,5 +124,17 @@ nodes = 300000
 pairs = 300
 priority = 15
 engine = "~/engines/yane-9133c527-finny-avx2/YaneuraOu-by-gcc"
-note = "M2: PC-ALM 段階 A (T, α=1, ρ=1, η 自動, ε 較正)"
+note = "M2: PC-ALM 段階 A (T, α=1, ρ=1, η 自動, gn)"
+
+[[job]]
+name = "tune-s-pcalm-T3-gn-e1@48-vs-bp-rep-e1@48-300k"
+a = "011-s-pcalm-T3-gn/0001"
+a_fv = 48
+b = "011-s-bp-lr1-rot/0001"
+b_fv = 48
+nodes = 300000
+pairs = 300
+priority = 15
+engine = "~/engines/yane-9133c527-finny-avx2/YaneuraOu-by-gcc"
+note = "M2: PC-ALM 段階 A (T, α=1, ρ=1, η 自動, gn)"
 

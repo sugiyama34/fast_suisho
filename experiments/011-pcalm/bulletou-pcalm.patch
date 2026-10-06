@@ -1,8 +1,8 @@
 diff --git a/crates/cuda_cpp/cpp/bulletou_cuda_backend.cu b/crates/cuda_cpp/cpp/bulletou_cuda_backend.cu
-index e91bced0..2eb24495 100644
+index e91bced0..16dc2781 100644
 --- a/crates/cuda_cpp/cpp/bulletou_cuda_backend.cu
 +++ b/crates/cuda_cpp/cpp/bulletou_cuda_backend.cu
-@@ -7339,3 +7339,1214 @@ extern "C" int bulletou_cuda_cpp_ranger_update_host(
+@@ -7339,3 +7339,1285 @@ extern "C" int bulletou_cuda_cpp_ranger_update_host(
  
      return ok();
  }
@@ -886,6 +886,50 @@ index e91bced0..2eb24495 100644
 +    lam1_then_h1[tid] = combined[tid] + r;
 +}
 +
++// Gradient-scale normalization (experiment-011): PC-ALM's raw weight gradients shrink with eta (= 1/lambda_max,
++// which grows with the weights), so with a fixed Adam/Ranger epsilon the FT updates get swallowed by epsilon.
++// Each mini-batch the PC-ALM gradients are rescaled so that the mean |g| over the nonzero FT (l0w) gradient
++// entries equals `ref` (the typical BP value), i.e. the optimizer and its epsilon then see BP-like scales.
++// acc = 2 doubles {sum |g|, count} accumulated over nonzero l0w gradient entries.
++__global__ void sfnn_pcalm_abs_stats_kernel(const float* g, size_t len, double* acc) {
++    double sum = 0.0;
++    double count = 0.0;
++    for (size_t i = blockIdx.x * static_cast<size_t>(blockDim.x) + threadIdx.x; i < len;
++         i += static_cast<size_t>(gridDim.x) * blockDim.x) {
++        const float v = g[i];
++        if (v != 0.0f) {
++            sum += fabs(static_cast<double>(v));
++            count += 1.0;
++        }
++    }
++    for (int off = 16; off > 0; off >>= 1) {
++        sum += __shfl_down_sync(0xffffffffU, sum, off);
++        count += __shfl_down_sync(0xffffffffU, count, off);
++    }
++    if ((threadIdx.x & 31U) == 0) {
++        atomicAdd(&acc[0], sum);
++        atomicAdd(&acc[1], count);
++    }
++}
++
++// factor_out[0] = ref / mean|g| (1 if no nonzero entries); factor_out[1] = raw mean|g| (diagnostics).
++__global__ void sfnn_pcalm_grad_factor_kernel(const double* acc, float ref, float* factor_out) {
++    if (blockIdx.x != 0 || threadIdx.x != 0) {
++        return;
++    }
++    const double mean = acc[1] > 0.0 ? acc[0] / acc[1] : 0.0;
++    factor_out[0] = mean > 0.0 ? static_cast<float>(static_cast<double>(ref) / mean) : 1.0f;
++    factor_out[1] = static_cast<float>(mean);
++}
++
++__global__ void sfnn_pcalm_scale_kernel(float* g, size_t len, const float* factor) {
++    const float f = factor[0];
++    for (size_t i = blockIdx.x * static_cast<size_t>(blockDim.x) + threadIdx.x; i < len;
++         i += static_cast<size_t>(gridDim.x) * blockDim.x) {
++        g[i] *= f;
++    }
++}
++
 +int sfnn_pcalm_copy(BulletOuCudaCppContext* ctx, float* dst, const float* src, size_t len, const char* label) {
 +    if (len == 0) {
 +        return 0;
@@ -994,7 +1038,8 @@ index e91bced0..2eb24495 100644
 +    float alpha,
 +    float rho,
 +    float eta,
-+    float eta_auto_scale) {
++    float eta_auto_scale,
++    float grad_norm_ref) {
 +    if (validate_sfnn_shape(
 +            input_size,
 +            ft_size,
@@ -1021,6 +1066,9 @@ index e91bced0..2eb24495 100644
 +    }
 +    if (steps == 0) {
 +        return fail_message("PC-ALM steps must be at least 1");
++    }
++    if (!(std::isfinite(grad_norm_ref) && grad_norm_ref >= 0.0f)) {
++        return fail_message("PC-ALM grad_norm_ref must be finite and >= 0");
 +    }
 +    if (!(std::isfinite(alpha) && std::isfinite(rho) && std::isfinite(eta) && std::isfinite(eta_auto_scale)) ||
 +        rho < 0.0f || alpha < 0.0f || (eta_auto_scale <= 0.0f && eta <= 0.0f)) {
@@ -1050,7 +1098,7 @@ index e91bced0..2eb24495 100644
 +        {lgrad->len, batch, "pcalm lgrad"},
 +        {lps->len, batch, "pcalm lps"},
 +        {w1_eff_buf->len, num_stacks * (l1_out * ft_size + l2_size * l2_in + 2 * l2_size), "pcalm eff weights"},
-+        {eta_buf->len, 4, "pcalm eta"},
++        {eta_buf->len, 12, "pcalm eta"},
 +        {combined->len, batch * ft_size, "pcalm combined"},
 +        {l1->len, batch * l1_out, "pcalm l1"},
 +        {l2_input->len, batch * l2_in, "pcalm l2_input"},
@@ -1215,14 +1263,37 @@ index e91bced0..2eb24495 100644
 +            max_active, input_size, ft_size) != 0) {
 +        return -1;
 +    }
++    if (grad_norm_ref > 0.0f) {
++        // eta_buf layout: [0] eta, [1] lambda1, [2] lambda3, [3] lambda2, [4..7] 2 doubles (sum|g|, count),
++        // [8] scale factor, [9] raw mean |g| of the nonzero FT gradients.
++        double* acc = reinterpret_cast<double*>(eta_buf->ptr + 4);
++        float* factor = eta_buf->ptr + 8;
++        if (sfnn_pcalm_zero(ctx, eta_buf->ptr + 4, 4, "pcalm zero grad stats") != 0) {
++            return -1;
++        }
++        sfnn_pcalm_abs_stats_kernel<<<1024, 256, 0, ctx->stream>>>(l0w_gradients->ptr, l0w_gradients->len, acc);
++        sfnn_pcalm_grad_factor_kernel<<<1, 32, 0, ctx->stream>>>(acc, grad_norm_ref, factor);
++        BulletOuCudaCppF32Buffer* grads[] = {
++            l0w_gradients, l0b_gradients, l1w_gradients, l1b_gradients, l1fw_gradients, l1fb_gradients,
++            l2w_gradients, l2b_gradients, l2fw_gradients, l2fb_gradients, l3w_gradients, l3b_gradients,
++            l3fw_gradients, l3fb_gradients};
++        for (BulletOuCudaCppF32Buffer* g : grads) {
++            if (g != nullptr && g->ptr != nullptr && g->len != 0) {
++                sfnn_pcalm_scale_kernel<<<1024, 256, 0, ctx->stream>>>(g->ptr, g->len, factor);
++            }
++        }
++        if (check_kernel_launch("sfnn_pcalm grad normalization launch") != 0) {
++            return -1;
++        }
++    }
 +    return ok();
 +}
 diff --git a/crates/cuda_cpp/src/bin/pcalm_gradcheck.rs b/crates/cuda_cpp/src/bin/pcalm_gradcheck.rs
 new file mode 100644
-index 00000000..6a2a9439
+index 00000000..cf2fe429
 --- /dev/null
 +++ b/crates/cuda_cpp/src/bin/pcalm_gradcheck.rs
-@@ -0,0 +1,201 @@
+@@ -0,0 +1,211 @@
 +//! fast_suisho experiment-011: gradient dump for validating the PC-ALM backward pass.
 +//!
 +//! Reads raw little-endian tensors written by `experiments/011-pcalm/m0/gradcheck.py` from `<dir>`:
@@ -1233,7 +1304,7 @@ index 00000000..6a2a9439
 +//! parameter gradients to `<out>/<name>.f32` plus `loss.txt`.
 +//!
 +//!   pcalm_gradcheck <dir> <out> bp
-+//!   pcalm_gradcheck <dir> <out> pcalm <steps> <alpha> <rho> <eta_h | auto:<scale>>
++//!   pcalm_gradcheck <dir> <out> pcalm <steps> <alpha> <rho> <eta_h | auto:<scale>> [grad_norm_ref]
 +
 +use std::fs;
 +use std::path::{Path, PathBuf};
@@ -1375,8 +1446,15 @@ index 00000000..6a2a9439
 +                Some(scale) => (0.0, scale.parse()?),
 +                None => (args[7].parse()?, 0.0),
 +            };
-+            let config =
-+                SfnnPcalmConfig { steps: args[4].parse()?, alpha: args[5].parse()?, rho: args[6].parse()?, eta_h, eta_auto_scale };
++            let grad_norm_ref: f32 = if args.len() > 8 { args[8].parse()? } else { 0.0 };
++            let config = SfnnPcalmConfig {
++                steps: args[4].parse()?,
++                alpha: args[5].parse()?,
++                rho: args[6].parse()?,
++                eta_h,
++                eta_auto_scale,
++                grad_norm_ref,
++            };
 +            let ws = SfnnPcalmWorkspace::new(&ctx, shape, batch_size)?;
 +            bulletou_cuda_cpp::sfnn_pcalm_backward_train_device(
 +                &ctx,
@@ -1394,7 +1472,10 @@ index 00000000..6a2a9439
 +                config,
 +            )?;
 +            let eta = ws.eta.download(&ctx)?;
-+            fs::write(out.join("eta.txt"), format!("{} {} {} {}\n", eta[0], eta[1], eta[2], eta[3]))?;
++            fs::write(
++                out.join("eta.txt"),
++                format!("{} {} {} {} {} {}\n", eta[0], eta[1], eta[2], eta[3], eta[8], eta[9]),
++            )?;
 +        }
 +        other => return Err(format!("unknown mode {other}").into()),
 +    }
@@ -1425,10 +1506,10 @@ index 00000000..6a2a9439
 +    Ok(())
 +}
 diff --git a/crates/cuda_cpp/src/lib.rs b/crates/cuda_cpp/src/lib.rs
-index 9ccab528..77cbf4ad 100644
+index 9ccab528..915c07bd 100644
 --- a/crates/cuda_cpp/src/lib.rs
 +++ b/crates/cuda_cpp/src/lib.rs
-@@ -3028,6 +3028,245 @@ fn sfnn_backward_device_impl(
+@@ -3028,6 +3028,252 @@ fn sfnn_backward_device_impl(
      check(rc)
  }
  
@@ -1444,6 +1525,9 @@ index 9ccab528..77cbf4ad 100644
 +    /// `> 0`: recompute eta every mini-batch as `eta_auto_scale / (1.05 * lambda_max estimate)` from the
 +    /// current weights (the reference rule eta = 1 / lambda_max, tracked as the weights grow).
 +    pub eta_auto_scale: f32,
++    /// `> 0`: rescale the PC-ALM weight gradients each mini-batch so that the mean |g| of the nonzero FT gradient
++    /// entries equals this value (the typical BP scale), so the optimizer epsilon acts as it does for BP.
++    pub grad_norm_ref: f32,
 +}
 +
 +impl SfnnPcalmConfig {
@@ -1459,6 +1543,9 @@ index 9ccab528..77cbf4ad 100644
 +        }
 +        if !(self.eta_auto_scale.is_finite() && self.eta_auto_scale >= 0.0) {
 +            return Err(CudaCppError::message("PC-ALM eta_auto_scale must be finite and >= 0"));
++        }
++        if !(self.grad_norm_ref.is_finite() && self.grad_norm_ref >= 0.0) {
++            return Err(CudaCppError::message("PC-ALM grad_norm_ref must be finite and >= 0"));
 +        }
 +        if self.eta_auto_scale == 0.0 && !(self.eta_h.is_finite() && self.eta_h > 0.0) {
 +            return Err(CudaCppError::message("PC-ALM eta_h must be finite and > 0 (or use eta_auto_scale)"));
@@ -1516,7 +1603,7 @@ index 9ccab528..77cbf4ad 100644
 +                ctx,
 +                shape.num_stacks * (l1_out * shape.ft_size + shape.l2_size * l2_in + 2 * shape.l2_size),
 +            )?,
-+            eta: F32Buffer::new(ctx, 4)?,
++            eta: F32Buffer::new(ctx, 12)?,
 +        })
 +    }
 +}
@@ -1666,6 +1753,7 @@ index 9ccab528..77cbf4ad 100644
 +            config.rho,
 +            config.eta_h,
 +            config.eta_auto_scale,
++            config.grad_norm_ref,
 +        )
 +    };
 +    check(rc)
@@ -1674,7 +1762,7 @@ index 9ccab528..77cbf4ad 100644
  #[derive(Debug)]
  pub struct RangerParamState {
      pub momentum: F32Buffer,
-@@ -4964,6 +5203,8 @@ pub struct SfnnTrainStepRunner {
+@@ -4964,6 +5210,8 @@ pub struct SfnnTrainStepRunner {
      pub backward_workspace: SfnnBackwardWorkspace,
      pub upload_slots: Vec<SfnnTrainStepUploadSlot>,
      pub next_upload_slot: usize,
@@ -1683,7 +1771,7 @@ index 9ccab528..77cbf4ad 100644
  }
  
  impl SfnnTrainStepRunner {
-@@ -5069,9 +5310,57 @@ impl SfnnTrainStepRunner {
+@@ -5069,9 +5317,57 @@ impl SfnnTrainStepRunner {
              backward_workspace,
              upload_slots,
              next_upload_slot: 0,
@@ -1741,7 +1829,7 @@ index 9ccab528..77cbf4ad 100644
      pub fn step(
          &mut self,
          ctx: &Context,
-@@ -5137,14 +5426,13 @@ impl SfnnTrainStepRunner {
+@@ -5137,14 +5433,13 @@ impl SfnnTrainStepRunner {
              &self.loss_workspace,
              finalize_loss,
          )?;
@@ -1761,7 +1849,7 @@ index 9ccab528..77cbf4ad 100644
          )?;
          self.update_weights(ctx, params)
      }
-@@ -5218,14 +5506,13 @@ impl SfnnTrainStepRunner {
+@@ -5218,14 +5513,13 @@ impl SfnnTrainStepRunner {
                  &self.loss_workspace,
                  finalize_loss,
              )?;
@@ -1781,7 +1869,7 @@ index 9ccab528..77cbf4ad 100644
              )?;
          }
          self.update_weights(ctx, params)?;
-@@ -5283,15 +5570,28 @@ impl SfnnTrainStepRunner {
+@@ -5283,15 +5577,28 @@ impl SfnnTrainStepRunner {
              &self.loss_workspace,
          )?;
          after_loss.record(ctx)?;
@@ -1819,7 +1907,7 @@ index 9ccab528..77cbf4ad 100644
          after_backward.record(ctx)?;
          self.update_weights(ctx, params)?;
          stop.record(ctx)?;
-@@ -6299,6 +6599,96 @@ mod ffi {
+@@ -6299,6 +6606,97 @@ mod ffi {
              l3axw_gradients: *mut BulletOuCudaCppF32Buffer,
              l3axb_gradients: *mut BulletOuCudaCppF32Buffer,
          ) -> i32;
@@ -1911,13 +1999,14 @@ index 9ccab528..77cbf4ad 100644
 +            rho: f32,
 +            eta: f32,
 +            eta_auto_scale: f32,
++            grad_norm_ref: f32,
 +        ) -> i32;
 +
          pub fn bulletou_cuda_cpp_sfnn_backward_train_device(
              ctx: *mut BulletOuCudaCppContext,
              input_size: usize,
 diff --git a/examples/bulletou.rs b/examples/bulletou.rs
-index c0bba748..9c657145 100644
+index c0bba748..665152a4 100644
 --- a/examples/bulletou.rs
 +++ b/examples/bulletou.rs
 @@ -1444,6 +1444,16 @@ impl PlateauMonitor {
@@ -1937,7 +2026,7 @@ index c0bba748..9c657145 100644
  #[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
  #[clap(rename_all = "lowercase")]
  enum TestSampleMode {
-@@ -2602,6 +2612,34 @@ struct Args {
+@@ -2602,6 +2612,40 @@ struct Args {
      #[arg(long = "no-sfnn-factorized", conflicts_with = "sfnn_factorizer")]
      no_sfnn_factorized: bool,
  
@@ -1969,10 +2058,16 @@ index c0bba748..9c657145 100644
 +    #[arg(long)]
 +    pcalm_eta_auto: Option<f32>,
 +
++    /// PC-ALM gradient-scale normalization: rescale the PC-ALM weight gradients every mini-batch so that the mean
++    /// |g| of the nonzero FT gradient entries equals this value (0 = off). Use the typical BP value so that the
++    /// optimizer epsilon damps PC-ALM's updates the way it damps BP's.
++    #[arg(long, default_value = "0")]
++    pcalm_grad_norm: f32,
++
      /// Held-out test set (.hcpe / .psv / .bin) for sign-agreement validation
      /// during training. When set, the trainer runs validation after
      /// each validation event (= every `--validation-rate` superbatches,
-@@ -2797,6 +2835,21 @@ impl Args {
+@@ -2797,6 +2841,21 @@ impl Args {
          if self.sfnn_factorizer.is_some() && !eval_type.uses_layerstack() {
              return Err("--sfnn-factorizer currently applies to SFNN / LayerStack eval types only".to_string());
          }
@@ -1994,7 +2089,7 @@ index c0bba748..9c657145 100644
          if !(self.loss_pow_exp.is_finite() && self.loss_pow_exp >= 1.0) {
              return Err(format!("--loss-pow-exp must be finite and >= 1 (got {})", self.loss_pow_exp));
          }
-@@ -5993,6 +6046,33 @@ fn run_cuda_cpp_sfnn_direct_steps(args: &Args, feature_kind: CudaCppSfnnFeatureK
+@@ -5993,6 +6052,34 @@ fn run_cuda_cpp_sfnn_direct_steps(args: &Args, feature_kind: CudaCppSfnnFeatureK
          ),
      }
      .map_err(|e| e.to_string())?;
@@ -2010,6 +2105,7 @@ index c0bba748..9c657145 100644
 +                        rho: p.rho,
 +                        eta_h: p.eta_h,
 +                        eta_auto_scale: p.eta_auto_scale,
++                        grad_norm_ref: p.grad_norm_ref,
 +                    },
 +                )
 +                .map_err(|e| e.to_string())?;
@@ -2019,8 +2115,8 @@ index c0bba748..9c657145 100644
 +    enable_pcalm(&mut runner)?;
 +    if let Some(p) = pcalm_settings {
 +        eprintln!(
-+            "  credit = PC-ALM (fast_suisho experiment-011): steps={} alpha={} rho={} eta_h={} eta_auto_scale={}",
-+            p.steps, p.alpha, p.rho, p.eta_h, p.eta_auto_scale
++            "  credit = PC-ALM (fast_suisho experiment-011): steps={} alpha={} rho={} eta_h={} eta_auto_scale={} grad_norm={}",
++            p.steps, p.alpha, p.rho, p.eta_h, p.eta_auto_scale, p.grad_norm_ref
 +        );
 +    } else {
 +        eprintln!("  credit = backprop");
@@ -2028,7 +2124,7 @@ index c0bba748..9c657145 100644
      let upload_ctx = Context::new(device).map_err(|e| e.to_string())?;
  
      let loss_kind = cuda_cpp_scalar_loss_kind(args);
-@@ -6195,6 +6275,7 @@ fn run_cuda_cpp_sfnn_direct_steps(args: &Args, feature_kind: CudaCppSfnnFeatureK
+@@ -6195,6 +6282,7 @@ fn run_cuda_cpp_sfnn_direct_steps(args: &Args, feature_kind: CudaCppSfnnFeatureK
                          factorizer_active,
                      )
                      .map_err(|e| e.to_string())?;
@@ -2036,7 +2132,7 @@ index c0bba748..9c657145 100644
                      completed_steps = snapshot_completed_steps;
                      excluded_elapsed = excluded_elapsed.saturating_add(checkpoint_started.elapsed());
                  } else {
-@@ -10531,6 +10612,49 @@ const RESUME_CONFIG_NAME: &str = "resume-config.txt";
+@@ -10531,6 +10619,51 @@ const RESUME_CONFIG_NAME: &str = "resume-config.txt";
  /// continuing a trained model on a new teacher is a supported workflow, but
  /// changing controls such as `--superbatches` or LR policy should require an
  /// explicit `--resume`.
@@ -2048,6 +2144,7 @@ index c0bba748..9c657145 100644
 +    rho: f32,
 +    eta_h: f32,
 +    eta_auto_scale: f32,
++    grad_norm_ref: f32,
 +}
 +
 +fn pcalm_config(args: &Args) -> Result<Option<PcalmSettings>, String> {
@@ -2080,13 +2177,14 @@ index c0bba748..9c657145 100644
 +        rho: args.pcalm_rho,
 +        eta_h,
 +        eta_auto_scale,
++        grad_norm_ref: args.pcalm_grad_norm,
 +    }))
 +}
 +
  fn resume_signature(args: &Args) -> String {
      let positions_per_superbatch = effective_positions_per_superbatch(args).unwrap_or(DEFAULT_POSITIONS_PER_SUPERBATCH);
      let batches_per_superbatch = effective_batches_per_superbatch(args).unwrap_or(1);
-@@ -10540,7 +10664,7 @@ fn resume_signature(args: &Args) -> String {
+@@ -10540,7 +10673,7 @@ fn resume_signature(args: &Args) -> String {
      let superbatches = args.superbatches.map(|n| n.to_string()).unwrap_or_else(|| "none".to_string());
      let test_teacher =
          args.test_teacher.as_ref().map(|p| p.display().to_string()).unwrap_or_else(|| "none".to_string());
@@ -2095,7 +2193,7 @@ index c0bba748..9c657145 100644
          "schema=bulletou-resume-v3".to_string(),
          format!("backend={}", args.backend.cli_name()),
          format!("eval_type={}", args.eval_type().cli_name()),
-@@ -10592,9 +10716,19 @@ fn resume_signature(args: &Args) -> String {
+@@ -10592,9 +10725,20 @@ fn resume_signature(args: &Args) -> String {
          format!("test_batch_size={}", args.test_batch_size),
          format!("test_sample={}", args.test_sample.cli_name()),
          format!("test_seed={}", args.test_seed),
@@ -2106,12 +2204,13 @@ index c0bba748..9c657145 100644
 +    // fast_suisho experiment-011: BP signatures stay identical to upstream; PC-ALM runs add one line.
 +    if args.credit == CreditMode::Pcalm {
 +        lines.push(format!(
-+            "credit=pcalm steps={} alpha={:.9} rho={:.9} eta_h={:.9} eta_auto={:.9}",
++            "credit=pcalm steps={} alpha={:.9} rho={:.9} eta_h={:.9} eta_auto={:.9} grad_norm={:.12}",
 +            args.pcalm_steps,
 +            args.pcalm_alpha,
 +            args.pcalm_rho,
 +            args.pcalm_eta_h.unwrap_or(f32::NAN),
-+            args.pcalm_eta_auto.unwrap_or(f32::NAN)
++            args.pcalm_eta_auto.unwrap_or(f32::NAN),
++            args.pcalm_grad_norm
 +        ));
 +    }
 +    lines.join("\n") + "\n"

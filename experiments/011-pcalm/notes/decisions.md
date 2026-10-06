@@ -17,3 +17,5 @@
 | 10-06 | W&B: ユーザーが kajiki で `wandb login` (~/.netrc) を行い、環境変数には置かない方針。`train_supervised.py` は ~/.netrc の資格情報も見て online で記録する。offline だった 2 run は `wandb sync` 済み | ユーザー | ユーザー |
 | 10-06 | suzuki からのファイル (009 のエンジン `423b6b1c…`, full-e12/16/20 の nn.bin, full-e1/16 の state.bin, full-e16 @ 48 の棋譜, B_s0) を受け取り、sha256 を確認して配置 (`xfer/MANIFEST-from-suzuki.sha256`) | ユーザーが転送 | ユーザー / Claude |
 | 10-06 | W&B の run 名は arm 名 (フォルダ名から `011-` を除いたもの) の規模を書き下した形: `small-bp-lr1`, `small-pcalm-T4`, `full-bp-rot` など。全設定は config に残る。既存の run も API で改名。フォルダ名・arm 名 (`s-` / `f-`) は変えない | ユーザー | ユーザー |
+| 10-06 23:15 | **固定 epsilon の較正を廃止し、勾配の大きさの正規化 (`gn`) に置き換える**。PC-ALM の arm は `-gn` を付け、ミニバッチごとに勾配全体を定数倍して FT の mean \|g\| を BP の典型値 4.0e-7 に揃える。Ranger の epsilon はレシピの 1e-7 のまま | PC-ALM 自身の e1 で λ_max が 1,074 に増え、FT の勾配が較正の前提から 19 倍小さく、√v ≤ epsilon が 100% (FT の更新が止まっていた)。定数では追従できない (m0.md) | Claude (advisor 確認) |
+| 10-06 23:15 | 固定 epsilon の `s-pcalm-T2` は旧方式の参考として残し (調整の候補にしない)、`s-pcalm-T4` は sb 6 で停止。段階 A を `-gn` でやり直す (MIG3 で約 9 時間の追加) | 同上 | Claude |
