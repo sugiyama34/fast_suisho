@@ -1,0 +1,4 @@
+# 学習ログ (サイズが大きく、実行中は追記され続ける)。要約はレポートに書く
+logs/
+# train_supervised.py が作る offline のメトリクス記録
+metrics-*.jsonl

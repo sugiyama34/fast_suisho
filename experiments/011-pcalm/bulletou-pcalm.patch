@@ -1,0 +1,1413 @@
+diff --git a/crates/cuda_cpp/cpp/bulletou_cuda_backend.cu b/crates/cuda_cpp/cpp/bulletou_cuda_backend.cu
+index e91bced0..34d8f504 100644
+--- a/crates/cuda_cpp/cpp/bulletou_cuda_backend.cu
++++ b/crates/cuda_cpp/cpp/bulletou_cuda_backend.cu
+@@ -7339,3 +7339,559 @@ extern "C" int bulletou_cuda_cpp_ranger_update_host(
+ 
+     return ok();
+ }
++
++// ============================================================================
++// fast_suisho experiment-011 local patch: PC-ALM (Augmented Lagrangian
++// Predictive Coding, Seely & Gould 2026) credit assignment for SFNN.
++//
++// States lifted to free variables per sample: h1 = combined (pairwise output,
++// ft_size), h2 = l1 (l1_hidden + 1), h3 = l2 (l2_size, post-crelu).
++// Residuals r1 = h1 - combined_fwd, r2 = h2 - L1(h1), r3 = h3 - crelu(L2(u(h2))),
++// supervised term = per-sample sigmoid-MSE of out = L3(h3) + h2[l1_hidden].
++// The inference loop is the reference algorithm (pcalm/inference.py,
++// run_pcalm, weight_credit_timing = pre_dual_energy) with per-sample energy:
++// T primal steps h -= eta * grad_h, T-1 dual steps lambda += alpha * r applied
++// right before primal steps 2..T. Weight gradients are the BP weight-gradient
++// reductions with the BP adjoints replaced by -(rho * r_i + lambda_i) / batch
++// and activations replaced by the settled states.
++// Supported: dense stacked L1 with optional shared factorizer, no axis
++// factorizer, sigmoid-MSE loss (checked on the Rust side as well).
++// ============================================================================
++
++constexpr size_t SFNN_PCALM_MAX_L2_IN = 32;
++
++__device__ __forceinline__ float sfnn_pcalm_crelu_mask(float value) {
++    return value > 0.0f && value < 1.0f ? 1.0f : 0.0f;
++}
++
++// One thread per sample: dual (optional) + primal step for h3 and h2, and the
++// layer-2 composite credit g2 = rho * r2 + lambda2 used by the h1 step.
++__global__ void sfnn_pcalm_tail_step_kernel(
++    float* h2,
++    float* lam2,
++    float* g2_out,
++    const float* p2,
++    const float* u,
++    float* h3,
++    float* lam3,
++    const float* p3,
++    const float* lgrad_mean,
++    const float* l2w,
++    const float* l2fw,
++    const float* l3w,
++    const float* l3fw,
++    const int* buckets,
++    size_t batch,
++    size_t l1_hidden,
++    size_t l2_size,
++    size_t num_stacks,
++    float batch_scale,
++    float alpha,
++    float rho,
++    float eta,
++    int apply_dual) {
++    size_t sample = blockIdx.x * blockDim.x + threadIdx.x;
++    if (sample >= batch) {
++        return;
++    }
++    const size_t l1_out = l1_hidden + 1;
++    const size_t l2_in = l1_hidden * 2;
++    int stack_i32 = buckets[sample];
++    if (stack_i32 < 0 || static_cast<size_t>(stack_i32) >= num_stacks) {
++        for (size_t r = 0; r < l1_out; ++r) {
++            g2_out[sample * l1_out + r] = 0.0f;
++        }
++        return;
++    }
++    const size_t stack = static_cast<size_t>(stack_i32);
++    const float lg = lgrad_mean[sample] * batch_scale;
++
++    float back[SFNN_PCALM_MAX_L2_IN];
++    for (size_t i = 0; i < SFNN_PCALM_MAX_L2_IN; ++i) {
++        back[i] = 0.0f;
++    }
++    for (size_t o = 0; o < l2_size; ++o) {
++        const size_t idx = sample * l2_size + o;
++        const float r3 = h3[idx] - p3[idx];
++        float lm = lam3[idx];
++        if (apply_dual != 0) {
++            lm += alpha * r3;
++            lam3[idx] = lm;
++        }
++        const float g3 = rho * r3 + lm;
++        const float w3 = l3w[stack * l2_size + o] + (l3fw != nullptr ? l3fw[o] : 0.0f);
++        const float v = sfnn_pcalm_crelu_mask(p3[idx]) * g3;
++        if (v != 0.0f) {
++            const float* w2row = l2w + stack * l2_size * l2_in + o * l2_in;
++            const float* f2row = l2fw != nullptr ? l2fw + o * l2_in : nullptr;
++            for (size_t i = 0; i < l2_in; ++i) {
++                back[i] += v * (w2row[i] + (f2row != nullptr ? f2row[i] : 0.0f));
++            }
++        }
++        h3[idx] -= eta * (g3 + lg * w3);
++    }
++    for (size_t r = 0; r < l1_out; ++r) {
++        const size_t idx = sample * l1_out + r;
++        const float x = h2[idx];
++        const float r2 = x - p2[idx];
++        float lm = lam2[idx];
++        if (apply_dual != 0) {
++            lm += alpha * r2;
++            lam2[idx] = lm;
++        }
++        const float g = rho * r2 + lm;
++        g2_out[idx] = g;
++        float grad = 0.0f;
++        if (r < l1_hidden) {
++            const float sq = u[sample * l2_in + r];
++            const float lin = u[sample * l2_in + l1_hidden + r];
++            const float jt = back[r] * sfnn_pcalm_crelu_mask(sq) * (2.0f * x * SFNN_PAIRWISE_SCALE) +
++                back[l1_hidden + r] * sfnn_pcalm_crelu_mask(lin);
++            grad = g - jt;
++        } else {
++            grad = g + lg;  // L1 -> output shortcut
++        }
++        h2[idx] = x - eta * grad;
++    }
++}
++
++// One thread per (sample, ft unit): dual (optional) + primal step for h1.
++__global__ void sfnn_pcalm_ft_step_kernel(
++    float* h1,
++    float* lam1,
++    const float* combined_fwd,
++    const float* g2,
++    const float* l1w,
++    const float* l1fw,
++    const int* buckets,
++    size_t batch,
++    size_t ft_size,
++    size_t l1_out,
++    size_t num_stacks,
++    float alpha,
++    float rho,
++    float eta,
++    int apply_dual) {
++    size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
++    if (tid >= batch * ft_size) {
++        return;
++    }
++    const size_t sample = tid / ft_size;
++    const size_t j = tid - sample * ft_size;
++    int stack_i32 = buckets[sample];
++    if (stack_i32 < 0 || static_cast<size_t>(stack_i32) >= num_stacks) {
++        return;
++    }
++    const size_t stack = static_cast<size_t>(stack_i32);
++    const float x = h1[tid];
++    const float r1 = x - combined_fwd[tid];
++    float lm = lam1[tid];
++    if (apply_dual != 0) {
++        lm += alpha * r1;
++        lam1[tid] = lm;
++    }
++    const float g1 = rho * r1 + lm;
++    const float* w = l1w + stack * l1_out * ft_size + j;
++    float back = 0.0f;
++    for (size_t k = 0; k < l1_out; ++k) {
++        const float wk = w[k * ft_size] + (l1fw != nullptr ? l1fw[j * l1_out + k] : 0.0f);
++        back += wk * g2[sample * l1_out + k];
++    }
++    h1[tid] = x - eta * (g1 - back);
++}
++
++// delta = scale * (rho * (h - pred) + lambda); scale = -1 / batch turns the
++// per-sample composite credit into a batch-mean BP-style output gradient.
++__global__ void sfnn_pcalm_credit_kernel(
++    const float* h,
++    const float* lam,
++    const float* pred,
++    float* delta,
++    size_t len,
++    float rho,
++    float scale) {
++    size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
++    if (tid >= len) {
++        return;
++    }
++    delta[tid] = scale * (rho * (h[tid] - pred[tid]) + lam[tid]);
++}
++
++int sfnn_pcalm_copy(BulletOuCudaCppContext* ctx, float* dst, const float* src, size_t len, const char* label) {
++    if (len == 0) {
++        return 0;
++    }
++    cudaError_t status = cudaMemcpyAsync(dst, src, len * sizeof(float), cudaMemcpyDeviceToDevice, ctx->stream);
++    if (status != cudaSuccess) {
++        return fail(label, status);
++    }
++    return 0;
++}
++
++int sfnn_pcalm_zero(BulletOuCudaCppContext* ctx, float* dst, size_t len, const char* label) {
++    if (len == 0) {
++        return 0;
++    }
++    cudaError_t status = cudaMemsetAsync(dst, 0, len * sizeof(float), ctx->stream);
++    if (status != cudaSuccess) {
++        return fail(label, status);
++    }
++    return 0;
++}
++
++// Predictions at the current states: p2 = L1(h1), u = u(h2), p3 = crelu(L2(u)),
++// out = L3(h3) + h2[l1_hidden], lgrad_mean = d(batch-mean loss)/d out.
++int sfnn_pcalm_predictions(
++    BulletOuCudaCppContext* ctx,
++    size_t ft_size,
++    size_t l1_hidden,
++    size_t l2_size,
++    size_t num_stacks,
++    size_t factorizer_king_axis_dim,
++    size_t factorizer_hand_axis_dim,
++    size_t batch,
++    const int* buckets,
++    const float* l1w,
++    const float* l1b,
++    const float* l1fw,
++    const float* l1fb,
++    int has_l1f,
++    const float* l2w,
++    const float* l2b,
++    const float* l2fw,
++    const float* l2fb,
++    int has_l2f,
++    const float* l3w,
++    const float* l3b,
++    const float* l3fw,
++    const float* l3fb,
++    int has_l3f,
++    const float* targets,
++    const float* entry_weights,
++    float output_inv_scale,
++    const float* h1,
++    const float* h2,
++    const float* h3,
++    float* p2,
++    float* u,
++    float* p3,
++    float* out,
++    float* lps,
++    float* lgrad_mean) {
++    constexpr int threads = 256;
++    int blocks = 0;
++    const size_t l1_out = l1_hidden + 1;
++    const size_t l2_in = l1_hidden * 2;
++    if (block_count_1d(batch * l1_out, threads, &blocks, "pcalm sfnn_stacked_l1_kernel") != 0) {
++        return -1;
++    }
++    sfnn_stacked_l1_kernel<<<blocks, threads, 0, ctx->stream>>>(
++        h1, l1w, l1b, l1fw, l1fb, nullptr, nullptr, buckets, p2, batch, ft_size, l1_out, num_stacks,
++        factorizer_king_axis_dim, factorizer_hand_axis_dim, has_l1f, 0, 0, 0);
++    if (check_kernel_launch("pcalm sfnn_stacked_l1_kernel launch") != 0) {
++        return -1;
++    }
++    if (block_count_1d(batch * l2_in, threads, &blocks, "pcalm sfnn_l2_input_kernel") != 0) {
++        return -1;
++    }
++    sfnn_l2_input_kernel<<<blocks, threads, 0, ctx->stream>>>(h2, u, batch, l1_hidden);
++    if (check_kernel_launch("pcalm sfnn_l2_input_kernel launch") != 0) {
++        return -1;
++    }
++    if (block_count_1d(batch * l2_size, threads, &blocks, "pcalm sfnn_stacked_l2_crelu_kernel") != 0) {
++        return -1;
++    }
++    sfnn_stacked_l2_crelu_kernel<<<blocks, threads, 0, ctx->stream>>>(
++        u, l2w, l2b, l2fw, l2fb, nullptr, nullptr, buckets, p3, batch, l2_in, l2_size, num_stacks,
++        factorizer_king_axis_dim, factorizer_hand_axis_dim, has_l2f, 0, 0, 0);
++    if (check_kernel_launch("pcalm sfnn_stacked_l2_crelu_kernel launch") != 0) {
++        return -1;
++    }
++    if (block_count_1d(batch, threads, &blocks, "pcalm sfnn_stacked_l3_output_kernel") != 0) {
++        return -1;
++    }
++    sfnn_stacked_l3_output_kernel<<<blocks, threads, 0, ctx->stream>>>(
++        h3, h2, l3w, l3b, l3fw, l3fb, nullptr, nullptr, buckets, out, batch, l2_size, l1_hidden, num_stacks,
++        factorizer_king_axis_dim, factorizer_hand_axis_dim, has_l3f, 0, 0, 0);
++    if (check_kernel_launch("pcalm sfnn_stacked_l3_output_kernel launch") != 0) {
++        return -1;
++    }
++    loss_sigmoid_mse_reduce_kernel<<<blocks, threads, 0, ctx->stream>>>(
++        out, targets, entry_weights, lps, lgrad_mean, output_inv_scale, batch);
++    if (check_kernel_launch("pcalm loss_sigmoid_mse_reduce_kernel launch") != 0) {
++        return -1;
++    }
++    return 0;
++}
++
++extern "C" int bulletou_cuda_cpp_sfnn_pcalm_backward_train_device(
++    BulletOuCudaCppContext* ctx,
++    size_t input_size,
++    size_t ft_size,
++    size_t l1_hidden,
++    size_t l2_size,
++    size_t num_stacks,
++    size_t l1_group_count,
++    size_t l1_common_size,
++    size_t l1_shard_size,
++    size_t factorizer_king_axis_dim,
++    size_t factorizer_hand_axis_dim,
++    size_t batch,
++    size_t max_active,
++    const BulletOuCudaCppI32Buffer* stm_indices,
++    const BulletOuCudaCppI32Buffer* nstm_indices,
++    const BulletOuCudaCppI32Buffer* buckets,
++    const BulletOuCudaCppF32Buffer* stm_l0,
++    const BulletOuCudaCppF32Buffer* nstm_l0,
++    const BulletOuCudaCppF32Buffer* combined,
++    const BulletOuCudaCppF32Buffer* l1,
++    const BulletOuCudaCppF32Buffer* l2_input,
++    const BulletOuCudaCppF32Buffer* l2,
++    const BulletOuCudaCppF32Buffer* l1w,
++    const BulletOuCudaCppF32Buffer* l1b,
++    const BulletOuCudaCppF32Buffer* l1fw,
++    const BulletOuCudaCppF32Buffer* l1fb,
++    int has_l1f,
++    const BulletOuCudaCppF32Buffer* l2w,
++    const BulletOuCudaCppF32Buffer* l2b,
++    const BulletOuCudaCppF32Buffer* l2fw,
++    const BulletOuCudaCppF32Buffer* l2fb,
++    int has_l2f,
++    const BulletOuCudaCppF32Buffer* l3w,
++    const BulletOuCudaCppF32Buffer* l3b,
++    const BulletOuCudaCppF32Buffer* l3fw,
++    const BulletOuCudaCppF32Buffer* l3fb,
++    int has_l3f,
++    const BulletOuCudaCppF32Buffer* targets,
++    const BulletOuCudaCppF32Buffer* entry_weights,
++    float output_inv_scale,
++    const BulletOuCudaCppF32Buffer* mean_output_gradients,
++    BulletOuCudaCppF32Buffer* h1,
++    BulletOuCudaCppF32Buffer* lam1,
++    BulletOuCudaCppF32Buffer* h2,
++    BulletOuCudaCppF32Buffer* lam2,
++    BulletOuCudaCppF32Buffer* p2,
++    BulletOuCudaCppF32Buffer* g2,
++    BulletOuCudaCppF32Buffer* u,
++    BulletOuCudaCppF32Buffer* h3,
++    BulletOuCudaCppF32Buffer* lam3,
++    BulletOuCudaCppF32Buffer* p3,
++    BulletOuCudaCppF32Buffer* out,
++    BulletOuCudaCppF32Buffer* lgrad,
++    BulletOuCudaCppF32Buffer* lps,
++    BulletOuCudaCppF32Buffer* l2_gradients,
++    BulletOuCudaCppF32Buffer* l1_gradients,
++    BulletOuCudaCppF32Buffer* combined_gradients,
++    BulletOuCudaCppF32Buffer* stm_l0_pre_gradients,
++    BulletOuCudaCppF32Buffer* nstm_l0_pre_gradients,
++    BulletOuCudaCppF32Buffer* l0w_gradients,
++    BulletOuCudaCppF32Buffer* l0b_gradients,
++    BulletOuCudaCppF32Buffer* l1w_gradients,
++    BulletOuCudaCppF32Buffer* l1b_gradients,
++    BulletOuCudaCppF32Buffer* l1fw_gradients,
++    BulletOuCudaCppF32Buffer* l1fb_gradients,
++    BulletOuCudaCppF32Buffer* l1axw_gradients,
++    BulletOuCudaCppF32Buffer* l1axb_gradients,
++    BulletOuCudaCppF32Buffer* l2w_gradients,
++    BulletOuCudaCppF32Buffer* l2b_gradients,
++    BulletOuCudaCppF32Buffer* l2fw_gradients,
++    BulletOuCudaCppF32Buffer* l2fb_gradients,
++    BulletOuCudaCppF32Buffer* l2axw_gradients,
++    BulletOuCudaCppF32Buffer* l2axb_gradients,
++    BulletOuCudaCppF32Buffer* l3w_gradients,
++    BulletOuCudaCppF32Buffer* l3b_gradients,
++    BulletOuCudaCppF32Buffer* l3fw_gradients,
++    BulletOuCudaCppF32Buffer* l3fb_gradients,
++    BulletOuCudaCppF32Buffer* l3axw_gradients,
++    BulletOuCudaCppF32Buffer* l3axb_gradients,
++    int zero_parameter_gradients,
++    size_t steps,
++    float alpha,
++    float rho,
++    float eta) {
++    if (validate_sfnn_shape(
++            input_size,
++            ft_size,
++            l1_hidden,
++            l2_size,
++            num_stacks,
++            l1_group_count,
++            l1_common_size,
++            l1_shard_size,
++            factorizer_king_axis_dim,
++            factorizer_hand_axis_dim,
++            batch,
++            max_active) != 0) {
++        return -1;
++    }
++    if (sfnn_is_common_shard_l1_shape(l1_common_size, l1_shard_size) || sfnn_is_grouped_l1_shape(l1_group_count)) {
++        return fail_message("PC-ALM supports dense stacked SFNN L1 only");
++    }
++    if (num_stacks > SFNN_DENSE_REDUCE_MAX_FAST_STACKS) {
++        return fail_message("PC-ALM requires the dense parameter-reduce fast path (too many stacks)");
++    }
++    if (l1_hidden * 2 > SFNN_PCALM_MAX_L2_IN) {
++        return fail_message("PC-ALM: l1_hidden too large");
++    }
++    if (steps == 0) {
++        return fail_message("PC-ALM steps must be at least 1");
++    }
++    if (!(std::isfinite(alpha) && std::isfinite(rho) && std::isfinite(eta)) || eta <= 0.0f || rho < 0.0f ||
++        alpha < 0.0f) {
++        return fail_message("PC-ALM alpha/rho/eta must be finite, eta > 0, rho >= 0, alpha >= 0");
++    }
++    const size_t l1_out = l1_hidden + 1;
++    const size_t l2_in = l1_hidden * 2;
++    struct Need {
++        const void* buf;
++        size_t have;
++        size_t want;
++        const char* name;
++    };
++    const Need needs[] = {
++        {h1, h1->len, batch * ft_size, "pcalm h1"},
++        {lam1, lam1->len, batch * ft_size, "pcalm lam1"},
++        {h2, h2->len, batch * l1_out, "pcalm h2"},
++        {lam2, lam2->len, batch * l1_out, "pcalm lam2"},
++        {p2, p2->len, batch * l1_out, "pcalm p2"},
++        {g2, g2->len, batch * l1_out, "pcalm g2"},
++        {u, u->len, batch * l2_in, "pcalm u"},
++        {h3, h3->len, batch * l2_size, "pcalm h3"},
++        {lam3, lam3->len, batch * l2_size, "pcalm lam3"},
++        {p3, p3->len, batch * l2_size, "pcalm p3"},
++        {out, out->len, batch, "pcalm out"},
++        {lgrad, lgrad->len, batch, "pcalm lgrad"},
++        {lps, lps->len, batch, "pcalm lps"},
++        {combined, combined->len, batch * ft_size, "pcalm combined"},
++        {l1, l1->len, batch * l1_out, "pcalm l1"},
++        {l2_input, l2_input->len, batch * l2_in, "pcalm l2_input"},
++        {l2, l2->len, batch * l2_size, "pcalm l2"},
++        {l2_gradients, l2_gradients->len, batch * l2_size, "pcalm l2_gradients"},
++        {l1_gradients, l1_gradients->len, batch * l1_out, "pcalm l1_gradients"},
++        {combined_gradients, combined_gradients->len, batch * ft_size, "pcalm combined_gradients"},
++        {targets, targets->len, batch, "pcalm targets"},
++        {entry_weights, entry_weights->len, batch, "pcalm entry_weights"},
++        {mean_output_gradients, mean_output_gradients->len, batch, "pcalm mean_output_gradients"},
++    };
++    for (const Need& n : needs) {
++        if (n.have < n.want) {
++            return fail_message(n.name);
++        }
++    }
++    if (set_context_device(ctx) != 0) {
++        return -1;
++    }
++
++    const float* w1f = has_l1f != 0 ? l1fw->ptr : nullptr;
++    const float* b1f = has_l1f != 0 ? l1fb->ptr : nullptr;
++    const float* w2f = has_l2f != 0 ? l2fw->ptr : nullptr;
++    const float* b2f = has_l2f != 0 ? l2fb->ptr : nullptr;
++    const float* w3f = has_l3f != 0 ? l3fw->ptr : nullptr;
++    const float* b3f = has_l3f != 0 ? l3fb->ptr : nullptr;
++
++    // Initial states = forward pass, lambda = 0, predictions = forward values.
++    if (sfnn_pcalm_copy(ctx, h1->ptr, combined->ptr, batch * ft_size, "pcalm copy h1") != 0 ||
++        sfnn_pcalm_copy(ctx, h2->ptr, l1->ptr, batch * l1_out, "pcalm copy h2") != 0 ||
++        sfnn_pcalm_copy(ctx, h3->ptr, l2->ptr, batch * l2_size, "pcalm copy h3") != 0 ||
++        sfnn_pcalm_copy(ctx, p2->ptr, l1->ptr, batch * l1_out, "pcalm copy p2") != 0 ||
++        sfnn_pcalm_copy(ctx, u->ptr, l2_input->ptr, batch * l2_in, "pcalm copy u") != 0 ||
++        sfnn_pcalm_copy(ctx, p3->ptr, l2->ptr, batch * l2_size, "pcalm copy p3") != 0 ||
++        sfnn_pcalm_copy(ctx, lgrad->ptr, mean_output_gradients->ptr, batch, "pcalm copy lgrad") != 0 ||
++        sfnn_pcalm_zero(ctx, lam1->ptr, batch * ft_size, "pcalm zero lam1") != 0 ||
++        sfnn_pcalm_zero(ctx, lam2->ptr, batch * l1_out, "pcalm zero lam2") != 0 ||
++        sfnn_pcalm_zero(ctx, lam3->ptr, batch * l2_size, "pcalm zero lam3") != 0) {
++        return -1;
++    }
++
++    constexpr int threads = 256;
++    int tail_blocks = 0;
++    int ft_blocks = 0;
++    if (block_count_1d(batch, threads, &tail_blocks, "sfnn_pcalm_tail_step_kernel") != 0 ||
++        block_count_1d(batch * ft_size, threads, &ft_blocks, "sfnn_pcalm_ft_step_kernel") != 0) {
++        return -1;
++    }
++    for (size_t t = 0; t < steps; ++t) {
++        const int apply_dual = t > 0 ? 1 : 0;
++        sfnn_pcalm_tail_step_kernel<<<tail_blocks, threads, 0, ctx->stream>>>(
++            h2->ptr, lam2->ptr, g2->ptr, p2->ptr, u->ptr, h3->ptr, lam3->ptr, p3->ptr, lgrad->ptr,
++            l2w->ptr, w2f, l3w->ptr, w3f, buckets->ptr, batch, l1_hidden, l2_size, num_stacks,
++            static_cast<float>(batch), alpha, rho, eta, apply_dual);
++        if (check_kernel_launch("sfnn_pcalm_tail_step_kernel launch") != 0) {
++            return -1;
++        }
++        sfnn_pcalm_ft_step_kernel<<<ft_blocks, threads, 0, ctx->stream>>>(
++            h1->ptr, lam1->ptr, combined->ptr, g2->ptr, l1w->ptr, w1f, buckets->ptr, batch, ft_size, l1_out,
++            num_stacks, alpha, rho, eta, apply_dual);
++        if (check_kernel_launch("sfnn_pcalm_ft_step_kernel launch") != 0) {
++            return -1;
++        }
++        if (sfnn_pcalm_predictions(
++                ctx, ft_size, l1_hidden, l2_size, num_stacks, factorizer_king_axis_dim, factorizer_hand_axis_dim,
++                batch, buckets->ptr, l1w->ptr, l1b->ptr, w1f, b1f, has_l1f, l2w->ptr, l2b->ptr, w2f, b2f, has_l2f,
++                l3w->ptr, l3b->ptr, w3f, b3f, has_l3f, targets->ptr, entry_weights->ptr, output_inv_scale,
++                h1->ptr, h2->ptr, h3->ptr, p2->ptr, u->ptr, p3->ptr, out->ptr, lps->ptr, lgrad->ptr) != 0) {
++            return -1;
++        }
++    }
++
++    // Composite credit with the duals used by the final primal step.
++    const float scale = -1.0f / static_cast<float>(batch);
++    int blocks = 0;
++    if (block_count_1d(batch * ft_size, threads, &blocks, "sfnn_pcalm_credit_kernel h1") != 0) {
++        return -1;
++    }
++    sfnn_pcalm_credit_kernel<<<blocks, threads, 0, ctx->stream>>>(
++        h1->ptr, lam1->ptr, combined->ptr, combined_gradients->ptr, batch * ft_size, rho, scale);
++    if (block_count_1d(batch * l1_out, threads, &blocks, "sfnn_pcalm_credit_kernel h2") != 0) {
++        return -1;
++    }
++    sfnn_pcalm_credit_kernel<<<blocks, threads, 0, ctx->stream>>>(
++        h2->ptr, lam2->ptr, p2->ptr, l1_gradients->ptr, batch * l1_out, rho, scale);
++    if (block_count_1d(batch * l2_size, threads, &blocks, "sfnn_pcalm_credit_kernel h3") != 0) {
++        return -1;
++    }
++    sfnn_pcalm_credit_kernel<<<blocks, threads, 0, ctx->stream>>>(
++        h3->ptr, lam3->ptr, p3->ptr, l2_gradients->ptr, batch * l2_size, rho, scale);
++    if (check_kernel_launch("sfnn_pcalm_credit_kernel launch") != 0) {
++        return -1;
++    }
++
++    if (zero_parameter_gradients != 0) {
++        if (launch_zero_sfnn_backward_parameter_gradients(
++                ctx, input_size, ft_size, l1_hidden, l2_size, num_stacks, l1_group_count, l1_common_size,
++                l1_shard_size, factorizer_king_axis_dim, factorizer_hand_axis_dim, l0w_gradients->ptr,
++                l0b_gradients->ptr, l1w_gradients->ptr, l1b_gradients->ptr, l1fw_gradients->ptr,
++                l1fb_gradients->ptr, l1axw_gradients->ptr, l1axb_gradients->ptr, l2w_gradients->ptr,
++                l2b_gradients->ptr, l2fw_gradients->ptr, l2fb_gradients->ptr, l2axw_gradients->ptr,
++                l2axb_gradients->ptr, l3w_gradients->ptr, l3b_gradients->ptr, l3fw_gradients->ptr,
++                l3fb_gradients->ptr, l3axw_gradients->ptr, l3axb_gradients->ptr, 0) != 0) {
++            return -1;
++        }
++    }
++    // Weight gradients: the BP parameter reductions with injected adjoints.
++    if (launch_sfnn_dense_param_reduce_tiled(
++            ctx, h3->ptr, nullptr, lgrad->ptr, buckets->ptr, l3w_gradients->ptr, l3b_gradients->ptr,
++            has_l3f != 0 ? l3fw_gradients->ptr : nullptr, has_l3f != 0 ? l3fb_gradients->ptr : nullptr, batch,
++            l2_size, 1, num_stacks, has_l3f, 0, 0, "pcalm dense reduce L3 params") != 0) {
++        return -1;
++    }
++    if (launch_sfnn_dense_param_reduce_tiled(
++            ctx, u->ptr, p3->ptr, l2_gradients->ptr, buckets->ptr, l2w_gradients->ptr, l2b_gradients->ptr,
++            has_l2f != 0 ? l2fw_gradients->ptr : nullptr, has_l2f != 0 ? l2fb_gradients->ptr : nullptr, batch,
++            l2_in, l2_size, num_stacks, has_l2f, 0, 1, "pcalm dense reduce L2 params") != 0) {
++        return -1;
++    }
++    if (launch_sfnn_dense_param_reduce_tiled(
++            ctx, h1->ptr, nullptr, l1_gradients->ptr, buckets->ptr, l1w_gradients->ptr, l1b_gradients->ptr,
++            has_l1f != 0 ? l1fw_gradients->ptr : nullptr, has_l1f != 0 ? l1fb_gradients->ptr : nullptr, batch,
++            ft_size, l1_out, num_stacks, has_l1f, 1, 0, "pcalm dense reduce L1 params") != 0) {
++        return -1;
++    }
++    if (launch_sfnn_inverse_index_l0_backward(
++            ctx, stm_indices->ptr, nstm_indices->ptr, stm_l0->ptr, nstm_l0->ptr, combined_gradients->ptr,
++            stm_l0_pre_gradients->ptr, nstm_l0_pre_gradients->ptr, l0w_gradients->ptr, l0b_gradients->ptr, batch,
++            max_active, input_size, ft_size) != 0) {
++        return -1;
++    }
++    return ok();
++}
+diff --git a/crates/cuda_cpp/src/bin/pcalm_gradcheck.rs b/crates/cuda_cpp/src/bin/pcalm_gradcheck.rs
+new file mode 100644
+index 00000000..0523b52e
+--- /dev/null
++++ b/crates/cuda_cpp/src/bin/pcalm_gradcheck.rs
+@@ -0,0 +1,198 @@
++//! fast_suisho experiment-011: gradient dump for validating the PC-ALM backward pass.
++//!
++//! Reads raw little-endian tensors written by `experiments/011-pcalm/m0/gradcheck.py` from `<dir>`:
++//! weights `l0w.f32 l0b.f32 l1w.f32 l1b.f32 l1fw.f32 l1fb.f32 l2w.f32 l2b.f32 l2fw.f32 l2fb.f32
++//! l3w.f32 l3b.f32 l3fw.f32 l3fb.f32` (SFNN HalfKA2 1024-7-64 k3k3, shared factorizer, unfolded) and
++//! a batch `stm.i32 nstm.i32` (B x 40 base features, -1 = empty), `buckets.i32`, `targets.f32`,
++//! `weights.f32`. Runs forward + sigmoid-MSE loss + one backward pass (BP or PC-ALM) and writes the
++//! parameter gradients to `<out>/<name>.f32` plus `loss.txt`.
++//!
++//!   pcalm_gradcheck <dir> <out> bp
++//!   pcalm_gradcheck <dir> <out> pcalm <steps> <alpha> <rho> <eta_h>
++
++use std::fs;
++use std::path::{Path, PathBuf};
++
++use bulletou_cuda_cpp::{
++    Context, F32Buffer, ScalarLossKind, ScalarLossWorkspace, ScalarLossWorkspaceLayout, SfnnBackwardWorkspace,
++    SfnnBackwardWorkspaceLayout, SfnnFactorizerActive, SfnnForwardDeviceBatch, SfnnForwardDeviceWeights,
++    SfnnForwardHostBatch, SfnnForwardHostWeights, SfnnForwardShape, SfnnForwardWorkspace, SfnnForwardWorkspaceLayout,
++    SfnnPcalmConfig, SfnnPcalmWorkspace,
++};
++
++fn read_f32(path: &Path) -> Vec<f32> {
++    let bytes = fs::read(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
++    bytes.chunks_exact(4).map(|c| f32::from_le_bytes(c.try_into().unwrap())).collect()
++}
++
++fn read_i32(path: &Path) -> Vec<i32> {
++    let bytes = fs::read(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
++    bytes.chunks_exact(4).map(|c| i32::from_le_bytes(c.try_into().unwrap())).collect()
++}
++
++fn write_f32(path: &Path, values: &[f32]) {
++    let mut bytes = Vec::with_capacity(values.len() * 4);
++    for v in values {
++        bytes.extend_from_slice(&v.to_le_bytes());
++    }
++    fs::write(path, bytes).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
++}
++
++fn main() -> Result<(), Box<dyn std::error::Error>> {
++    let args: Vec<String> = std::env::args().collect();
++    if args.len() < 4 {
++        return Err("usage: pcalm_gradcheck <dir> <out> bp | pcalm <steps> <alpha> <rho> <eta_h>".into());
++    }
++    let dir = PathBuf::from(&args[1]);
++    let out = PathBuf::from(&args[2]);
++    let mode = args[3].as_str();
++    fs::create_dir_all(&out)?;
++
++    let shape = SfnnForwardShape {
++        input_size: 131_949 + 1_629,
++        ft_size: 1024,
++        l1_hidden: 7,
++        l2_size: 64,
++        num_stacks: 9,
++        l1_group_count: 1,
++        l1_common_size: 0,
++        l1_shard_size: 0,
++        factorizer_king_axis_dim: 3,
++        factorizer_hand_axis_dim: 0,
++    };
++    let names = ["l0w", "l0b", "l1w", "l1b", "l1fw", "l1fb", "l2w", "l2b", "l2fw", "l2fb", "l3w", "l3b", "l3fw", "l3fb"];
++    let w: Vec<Vec<f32>> = names.iter().map(|n| read_f32(&dir.join(format!("{n}.f32")))).collect();
++    let host_weights = SfnnForwardHostWeights {
++        shape,
++        l0w: &w[0],
++        l0b: &w[1],
++        l1w: &w[2],
++        l1b: &w[3],
++        l1fw: Some(&w[4]),
++        l1fb: Some(&w[5]),
++        l1axw: None,
++        l1axb: None,
++        l2w: &w[6],
++        l2b: &w[7],
++        l2fw: Some(&w[8]),
++        l2fb: Some(&w[9]),
++        l2axw: None,
++        l2axb: None,
++        l3w: &w[10],
++        l3b: &w[11],
++        l3fw: Some(&w[12]),
++        l3fb: Some(&w[13]),
++        l3axw: None,
++        l3axb: None,
++    };
++    let stm = read_i32(&dir.join("stm.i32"));
++    let nstm = read_i32(&dir.join("nstm.i32"));
++    let buckets = read_i32(&dir.join("buckets.i32"));
++    let targets = read_f32(&dir.join("targets.f32"));
++    let entry_weights = read_f32(&dir.join("weights.f32"));
++    let batch_size = buckets.len();
++    let max_active = 40;
++
++    let ctx = Context::new(0)?;
++    let weights = SfnnForwardDeviceWeights::from_host(&ctx, host_weights)?;
++    let batch = SfnnForwardDeviceBatch::from_host(
++        &ctx,
++        SfnnForwardHostBatch { stm_indices: &stm, nstm_indices: &nstm, buckets: &buckets, batch_size, max_active },
++    )?;
++    let targets_dev = F32Buffer::from_host(&ctx, &targets)?;
++    let weights_dev = F32Buffer::from_host(&ctx, &entry_weights)?;
++    let forward = SfnnForwardWorkspace::new(&ctx, SfnnForwardWorkspaceLayout::new(shape, batch_size))?;
++    let loss = ScalarLossWorkspace::new(&ctx, ScalarLossWorkspaceLayout::new(batch_size))?;
++    let backward = SfnnBackwardWorkspace::new(&ctx, SfnnBackwardWorkspaceLayout::new(shape, batch_size, max_active))?;
++    for buf in [
++        &backward.l0w_gradients,
++        &backward.l0b_gradients,
++        &backward.l1w_gradients,
++        &backward.l1b_gradients,
++        &backward.l1fw_gradients,
++        &backward.l1fb_gradients,
++        &backward.l1axw_gradients,
++        &backward.l1axb_gradients,
++        &backward.l2w_gradients,
++        &backward.l2b_gradients,
++        &backward.l2fw_gradients,
++        &backward.l2fb_gradients,
++        &backward.l2axw_gradients,
++        &backward.l2axb_gradients,
++        &backward.l3w_gradients,
++        &backward.l3b_gradients,
++        &backward.l3fw_gradients,
++        &backward.l3fb_gradients,
++        &backward.l3axw_gradients,
++        &backward.l3axb_gradients,
++    ] {
++        buf.fill(&ctx, 0.0)?;
++    }
++    let factorizer = SfnnFactorizerActive::SHARED;
++    bulletou_cuda_cpp::sfnn_forward_device_with_factorizer(&ctx, &batch, &weights, &forward, factorizer)?;
++    bulletou_cuda_cpp::scalar_loss_device_from_buffers(
++        &ctx,
++        ScalarLossKind::SigmoidMse,
++        1.0,
++        batch_size,
++        &forward.output,
++        &targets_dev,
++        &weights_dev,
++        &loss,
++    )?;
++    match mode {
++        "bp" => bulletou_cuda_cpp::sfnn_backward_train_device_with_factorizer(
++            &ctx, &batch, &weights, &forward, &loss, &backward, factorizer,
++        )?,
++        "pcalm" => {
++            let config = SfnnPcalmConfig {
++                steps: args[4].parse()?,
++                alpha: args[5].parse()?,
++                rho: args[6].parse()?,
++                eta_h: args[7].parse()?,
++            };
++            let ws = SfnnPcalmWorkspace::new(&ctx, shape, batch_size)?;
++            bulletou_cuda_cpp::sfnn_pcalm_backward_train_device(
++                &ctx,
++                &batch,
++                &weights,
++                &forward,
++                &loss,
++                &targets_dev,
++                &weights_dev,
++                ScalarLossKind::SigmoidMse,
++                1.0,
++                &backward,
++                &ws,
++                factorizer,
++                config,
++            )?;
++        }
++        other => return Err(format!("unknown mode {other}").into()),
++    }
++    let rb = backward.download(&ctx)?;
++    let grads: [(&str, &Vec<f32>); 14] = [
++        ("l0w", &rb.l0w_gradients),
++        ("l0b", &rb.l0b_gradients),
++        ("l1w", &rb.l1w_gradients),
++        ("l1b", &rb.l1b_gradients),
++        ("l1fw", &rb.l1fw_gradients),
++        ("l1fb", &rb.l1fb_gradients),
++        ("l2w", &rb.l2w_gradients),
++        ("l2b", &rb.l2b_gradients),
++        ("l2fw", &rb.l2fw_gradients),
++        ("l2fb", &rb.l2fb_gradients),
++        ("l3w", &rb.l3w_gradients),
++        ("l3b", &rb.l3b_gradients),
++        ("l3fw", &rb.l3fw_gradients),
++        ("l3fb", &rb.l3fb_gradients),
++    ];
++    for (name, g) in grads {
++        write_f32(&out.join(format!("{name}.f32")), g);
++    }
++    write_f32(&out.join("output.f32"), &forward.output.download(&ctx)?);
++    let lr = loss.download(&ctx)?;
++    fs::write(out.join("loss.txt"), format!("{}\n", lr.mean))?;
++    println!("{mode}: batch={batch_size} loss={} -> {}", lr.mean, out.display());
++    Ok(())
++}
+diff --git a/crates/cuda_cpp/src/lib.rs b/crates/cuda_cpp/src/lib.rs
+index 9ccab528..15e32f76 100644
+--- a/crates/cuda_cpp/src/lib.rs
++++ b/crates/cuda_cpp/src/lib.rs
+@@ -3028,6 +3028,224 @@ fn sfnn_backward_device_impl(
+     check(rc)
+ }
+ 
++/// fast_suisho experiment-011 local patch: PC-ALM (Augmented Lagrangian Predictive Coding) settings.
++/// `alpha = 0` is plain predictive coding. See `bulletou_cuda_cpp_sfnn_pcalm_backward_train_device`.
++#[derive(Debug, Clone, Copy, PartialEq)]
++pub struct SfnnPcalmConfig {
++    pub steps: usize,
++    pub alpha: f32,
++    pub rho: f32,
++    pub eta_h: f32,
++}
++
++impl SfnnPcalmConfig {
++    pub fn validate(self) -> Result<()> {
++        if self.steps == 0 {
++            return Err(CudaCppError::message("PC-ALM steps must be at least 1"));
++        }
++        if !(self.alpha.is_finite() && self.alpha >= 0.0) {
++            return Err(CudaCppError::message("PC-ALM alpha must be finite and >= 0"));
++        }
++        if !(self.rho.is_finite() && self.rho >= 0.0) {
++            return Err(CudaCppError::message("PC-ALM rho must be finite and >= 0"));
++        }
++        if !(self.eta_h.is_finite() && self.eta_h > 0.0) {
++            return Err(CudaCppError::message("PC-ALM eta_h must be finite and > 0"));
++        }
++        Ok(())
++    }
++}
++
++/// Per-batch PC-ALM state buffers (states, duals, predictions). Not persisted in checkpoints:
++/// the duals restart from zero for every mini-batch.
++#[derive(Debug)]
++pub struct SfnnPcalmWorkspace {
++    pub h1: F32Buffer,
++    pub lam1: F32Buffer,
++    pub h2: F32Buffer,
++    pub lam2: F32Buffer,
++    pub p2: F32Buffer,
++    pub g2: F32Buffer,
++    pub u: F32Buffer,
++    pub h3: F32Buffer,
++    pub lam3: F32Buffer,
++    pub p3: F32Buffer,
++    pub out: F32Buffer,
++    pub lgrad: F32Buffer,
++    pub lps: F32Buffer,
++}
++
++impl SfnnPcalmWorkspace {
++    pub fn new(ctx: &Context, shape: SfnnForwardShape, batch_size: usize) -> Result<Self> {
++        let l1_out = shape.l1_hidden + 1;
++        let l2_in = shape.l1_hidden * 2;
++        let ft = batch_size * shape.ft_size;
++        Ok(Self {
++            h1: F32Buffer::new(ctx, ft)?,
++            lam1: F32Buffer::new(ctx, ft)?,
++            h2: F32Buffer::new(ctx, batch_size * l1_out)?,
++            lam2: F32Buffer::new(ctx, batch_size * l1_out)?,
++            p2: F32Buffer::new(ctx, batch_size * l1_out)?,
++            g2: F32Buffer::new(ctx, batch_size * l1_out)?,
++            u: F32Buffer::new(ctx, batch_size * l2_in)?,
++            h3: F32Buffer::new(ctx, batch_size * shape.l2_size)?,
++            lam3: F32Buffer::new(ctx, batch_size * shape.l2_size)?,
++            p3: F32Buffer::new(ctx, batch_size * shape.l2_size)?,
++            out: F32Buffer::new(ctx, batch_size)?,
++            lgrad: F32Buffer::new(ctx, batch_size)?,
++            lps: F32Buffer::new(ctx, batch_size)?,
++        })
++    }
++}
++
++/// Check that PC-ALM supports this SFNN configuration (dense stacked L1, no axis factorizer).
++pub fn sfnn_pcalm_check_supported(shape: SfnnForwardShape, factorizer: SfnnFactorizerActive) -> Result<()> {
++    if shape.has_compact_l1() {
++        return Err(CudaCppError::message("PC-ALM supports dense stacked SFNN L1 only (no grouped/common-shard L1)"));
++    }
++    if factorizer.any_axis() {
++        return Err(CudaCppError::message("PC-ALM does not support the SFNN axis factorizer"));
++    }
++    if shape.l1_hidden * 2 > 32 {
++        return Err(CudaCppError::message("PC-ALM: l1_hidden must be <= 16"));
++    }
++    Ok(())
++}
++
++/// PC-ALM replacement for `sfnn_backward_train_device_with_factorizer`: runs the inference loop on the
++/// forward workspace and writes the PC-ALM weight gradients into the backward workspace.
++#[allow(clippy::too_many_arguments)]
++pub fn sfnn_pcalm_backward_train_device(
++    ctx: &Context,
++    batch: &SfnnForwardDeviceBatch,
++    weights: &SfnnForwardDeviceWeights,
++    forward: &SfnnForwardWorkspace,
++    loss: &ScalarLossWorkspace,
++    targets: &F32Buffer,
++    entry_weights: &F32Buffer,
++    loss_kind: ScalarLossKind,
++    output_inv_scale: f32,
++    backward: &SfnnBackwardWorkspace,
++    pcalm: &SfnnPcalmWorkspace,
++    factorizer: SfnnFactorizerActive,
++    config: SfnnPcalmConfig,
++) -> Result<()> {
++    batch.validate()?;
++    weights.validate()?;
++    forward.validate()?;
++    loss.validate()?;
++    backward.validate()?;
++    config.validate()?;
++    let shape = weights.shape;
++    sfnn_pcalm_check_supported(shape, factorizer)?;
++    if !matches!(loss_kind, ScalarLossKind::SigmoidMse) {
++        return Err(CudaCppError::message("PC-ALM supports the sigmoid-MSE loss only"));
++    }
++    let pick = |w: &Option<F32Buffer>, b: &Option<F32Buffer>| -> Result<(*mut ffi::BulletOuCudaCppF32Buffer, *mut ffi::BulletOuCudaCppF32Buffer, i32)> {
++        match (w, b) {
++            (Some(w), Some(b)) if factorizer.shared => Ok((w.as_ptr(), b.as_ptr(), 1)),
++            (Some(_), Some(_)) | (None, None) if !factorizer.shared => {
++                // inactive shared factorizer: pass the stacked weights as harmless placeholders
++                Ok((weights.l1w.as_ptr(), weights.l1b.as_ptr(), 0))
++            }
++            _ => Err(CudaCppError::message("PC-ALM: shared factorizer tensors are missing or partial")),
++        }
++    };
++    let (l1fw, l1fb, has_l1f) = pick(&weights.l1fw, &weights.l1fb)?;
++    let (l2fw, l2fb, has_l2f) = pick(&weights.l2fw, &weights.l2fb)?;
++    let (l3fw, l3fb, has_l3f) = pick(&weights.l3fw, &weights.l3fb)?;
++    // SAFETY: all device buffers have been length-validated; the backend validates the PC-ALM buffer lengths.
++    let rc = unsafe {
++        ffi::bulletou_cuda_cpp_sfnn_pcalm_backward_train_device(
++            ctx.as_ptr(),
++            shape.input_size,
++            shape.ft_size,
++            shape.l1_hidden,
++            shape.l2_size,
++            shape.num_stacks,
++            shape.l1_group_count,
++            shape.l1_common_size,
++            shape.l1_shard_size,
++            shape.factorizer_king_axis_dim,
++            shape.factorizer_hand_axis_dim,
++            batch.batch_size,
++            batch.max_active,
++            batch.stm_indices.as_ptr(),
++            batch.nstm_indices.as_ptr(),
++            batch.buckets.as_ptr(),
++            forward.stm_l0.as_ptr(),
++            forward.nstm_l0.as_ptr(),
++            forward.combined.as_ptr(),
++            forward.l1.as_ptr(),
++            forward.l2_input.as_ptr(),
++            forward.l2.as_ptr(),
++            weights.l1w.as_ptr(),
++            weights.l1b.as_ptr(),
++            l1fw,
++            l1fb,
++            has_l1f,
++            weights.l2w.as_ptr(),
++            weights.l2b.as_ptr(),
++            l2fw,
++            l2fb,
++            has_l2f,
++            weights.l3w.as_ptr(),
++            weights.l3b.as_ptr(),
++            l3fw,
++            l3fb,
++            has_l3f,
++            targets.as_ptr(),
++            entry_weights.as_ptr(),
++            output_inv_scale,
++            loss.mean_output_gradients.as_ptr(),
++            pcalm.h1.as_ptr(),
++            pcalm.lam1.as_ptr(),
++            pcalm.h2.as_ptr(),
++            pcalm.lam2.as_ptr(),
++            pcalm.p2.as_ptr(),
++            pcalm.g2.as_ptr(),
++            pcalm.u.as_ptr(),
++            pcalm.h3.as_ptr(),
++            pcalm.lam3.as_ptr(),
++            pcalm.p3.as_ptr(),
++            pcalm.out.as_ptr(),
++            pcalm.lgrad.as_ptr(),
++            pcalm.lps.as_ptr(),
++            backward.l2_gradients.as_ptr(),
++            backward.l1_gradients.as_ptr(),
++            backward.combined_gradients.as_ptr(),
++            backward.stm_l0_pre_gradients.as_ptr(),
++            backward.nstm_l0_pre_gradients.as_ptr(),
++            backward.l0w_gradients.as_ptr(),
++            backward.l0b_gradients.as_ptr(),
++            backward.l1w_gradients.as_ptr(),
++            backward.l1b_gradients.as_ptr(),
++            backward.l1fw_gradients.as_ptr(),
++            backward.l1fb_gradients.as_ptr(),
++            backward.l1axw_gradients.as_ptr(),
++            backward.l1axb_gradients.as_ptr(),
++            backward.l2w_gradients.as_ptr(),
++            backward.l2b_gradients.as_ptr(),
++            backward.l2fw_gradients.as_ptr(),
++            backward.l2fb_gradients.as_ptr(),
++            backward.l2axw_gradients.as_ptr(),
++            backward.l2axb_gradients.as_ptr(),
++            backward.l3w_gradients.as_ptr(),
++            backward.l3b_gradients.as_ptr(),
++            backward.l3fw_gradients.as_ptr(),
++            backward.l3fb_gradients.as_ptr(),
++            backward.l3axw_gradients.as_ptr(),
++            backward.l3axb_gradients.as_ptr(),
++            0,
++            config.steps,
++            config.alpha,
++            config.rho,
++            config.eta_h,
++        )
++    };
++    check(rc)
++}
++
+ #[derive(Debug)]
+ pub struct RangerParamState {
+     pub momentum: F32Buffer,
+@@ -4964,6 +5182,8 @@ pub struct SfnnTrainStepRunner {
+     pub backward_workspace: SfnnBackwardWorkspace,
+     pub upload_slots: Vec<SfnnTrainStepUploadSlot>,
+     pub next_upload_slot: usize,
++    /// fast_suisho experiment-011: PC-ALM credit assignment instead of BP when set.
++    pub pcalm: Option<(SfnnPcalmConfig, SfnnPcalmWorkspace)>,
+ }
+ 
+ impl SfnnTrainStepRunner {
+@@ -5069,9 +5289,57 @@ impl SfnnTrainStepRunner {
+             backward_workspace,
+             upload_slots,
+             next_upload_slot: 0,
++            pcalm: None,
+         })
+     }
+ 
++    /// fast_suisho experiment-011: replace the BP backward pass with PC-ALM credit assignment.
++    pub fn enable_pcalm(&mut self, ctx: &Context, config: SfnnPcalmConfig) -> Result<()> {
++        config.validate()?;
++        sfnn_pcalm_check_supported(self.shape, self.factorizer)?;
++        let workspace = SfnnPcalmWorkspace::new(ctx, self.shape, self.batch_size)?;
++        self.pcalm = Some((config, workspace));
++        Ok(())
++    }
++
++    #[allow(clippy::too_many_arguments)]
++    fn backward_dispatch(
++        &self,
++        ctx: &Context,
++        device_batch: &SfnnForwardDeviceBatch,
++        targets: &F32Buffer,
++        entry_weights: &F32Buffer,
++        loss_kind: ScalarLossKind,
++        output_inv_scale: f32,
++    ) -> Result<()> {
++        match &self.pcalm {
++            Some((config, workspace)) => sfnn_pcalm_backward_train_device(
++                ctx,
++                device_batch,
++                &self.weights,
++                &self.forward_workspace,
++                &self.loss_workspace,
++                targets,
++                entry_weights,
++                loss_kind,
++                output_inv_scale,
++                &self.backward_workspace,
++                workspace,
++                self.factorizer,
++                *config,
++            ),
++            None => sfnn_backward_train_device_with_factorizer(
++                ctx,
++                device_batch,
++                &self.weights,
++                &self.forward_workspace,
++                &self.loss_workspace,
++                &self.backward_workspace,
++                self.factorizer,
++            ),
++        }
++    }
++
+     pub fn step(
+         &mut self,
+         ctx: &Context,
+@@ -5137,14 +5405,13 @@ impl SfnnTrainStepRunner {
+             &self.loss_workspace,
+             finalize_loss,
+         )?;
+-        sfnn_backward_train_device_with_factorizer(
++        self.backward_dispatch(
+             ctx,
+             &self.device_batch,
+-            &self.weights,
+-            &self.forward_workspace,
+-            &self.loss_workspace,
+-            &self.backward_workspace,
+-            self.factorizer,
++            &self.targets,
++            &self.entry_weights,
++            loss_kind,
++            output_inv_scale,
+         )?;
+         self.update_weights(ctx, params)
+     }
+@@ -5218,14 +5485,13 @@ impl SfnnTrainStepRunner {
+                 &self.loss_workspace,
+                 finalize_loss,
+             )?;
+-            sfnn_backward_train_device_with_factorizer(
++            self.backward_dispatch(
+                 ctx,
+                 &slot.device_batch,
+-                &self.weights,
+-                &self.forward_workspace,
+-                &self.loss_workspace,
+-                &self.backward_workspace,
+-                self.factorizer,
++                &slot.targets,
++                &slot.entry_weights,
++                loss_kind,
++                output_inv_scale,
+             )?;
+         }
+         self.update_weights(ctx, params)?;
+@@ -5283,15 +5549,28 @@ impl SfnnTrainStepRunner {
+             &self.loss_workspace,
+         )?;
+         after_loss.record(ctx)?;
+-        let backward_stages = sfnn_backward_train_profile_device_with_factorizer(
+-            ctx,
+-            &self.device_batch,
+-            &self.weights,
+-            &self.forward_workspace,
+-            &self.loss_workspace,
+-            &self.backward_workspace,
+-            self.factorizer,
+-        )?;
++        let backward_stages = if self.pcalm.is_some() {
++            // PC-ALM has no per-stage profile; time it as one backward block.
++            self.backward_dispatch(
++                ctx,
++                &self.device_batch,
++                &self.targets,
++                &self.entry_weights,
++                loss_kind,
++                output_inv_scale,
++            )?;
++            SfnnBackwardStageProfile::default()
++        } else {
++            sfnn_backward_train_profile_device_with_factorizer(
++                ctx,
++                &self.device_batch,
++                &self.weights,
++                &self.forward_workspace,
++                &self.loss_workspace,
++                &self.backward_workspace,
++                self.factorizer,
++            )?
++        };
+         after_backward.record(ctx)?;
+         self.update_weights(ctx, params)?;
+         stop.record(ctx)?;
+@@ -6299,6 +6578,94 @@ mod ffi {
+             l3axw_gradients: *mut BulletOuCudaCppF32Buffer,
+             l3axb_gradients: *mut BulletOuCudaCppF32Buffer,
+         ) -> i32;
++        // fast_suisho experiment-011 local patch: PC-ALM credit assignment for SFNN.
++        pub fn bulletou_cuda_cpp_sfnn_pcalm_backward_train_device(
++            ctx: *mut BulletOuCudaCppContext,
++            input_size: usize,
++            ft_size: usize,
++            l1_hidden: usize,
++            l2_size: usize,
++            num_stacks: usize,
++            l1_group_count: usize,
++            l1_common_size: usize,
++            l1_shard_size: usize,
++            factorizer_king_axis_dim: usize,
++            factorizer_hand_axis_dim: usize,
++            batch: usize,
++            max_active: usize,
++            stm_indices: *mut BulletOuCudaCppI32Buffer,
++            nstm_indices: *mut BulletOuCudaCppI32Buffer,
++            buckets: *mut BulletOuCudaCppI32Buffer,
++            stm_l0: *mut BulletOuCudaCppF32Buffer,
++            nstm_l0: *mut BulletOuCudaCppF32Buffer,
++            combined: *mut BulletOuCudaCppF32Buffer,
++            l1: *mut BulletOuCudaCppF32Buffer,
++            l2_input: *mut BulletOuCudaCppF32Buffer,
++            l2: *mut BulletOuCudaCppF32Buffer,
++            l1w: *mut BulletOuCudaCppF32Buffer,
++            l1b: *mut BulletOuCudaCppF32Buffer,
++            l1fw: *mut BulletOuCudaCppF32Buffer,
++            l1fb: *mut BulletOuCudaCppF32Buffer,
++            has_l1f: i32,
++            l2w: *mut BulletOuCudaCppF32Buffer,
++            l2b: *mut BulletOuCudaCppF32Buffer,
++            l2fw: *mut BulletOuCudaCppF32Buffer,
++            l2fb: *mut BulletOuCudaCppF32Buffer,
++            has_l2f: i32,
++            l3w: *mut BulletOuCudaCppF32Buffer,
++            l3b: *mut BulletOuCudaCppF32Buffer,
++            l3fw: *mut BulletOuCudaCppF32Buffer,
++            l3fb: *mut BulletOuCudaCppF32Buffer,
++            has_l3f: i32,
++            targets: *mut BulletOuCudaCppF32Buffer,
++            entry_weights: *mut BulletOuCudaCppF32Buffer,
++            output_inv_scale: f32,
++            mean_output_gradients: *mut BulletOuCudaCppF32Buffer,
++            h1: *mut BulletOuCudaCppF32Buffer,
++            lam1: *mut BulletOuCudaCppF32Buffer,
++            h2: *mut BulletOuCudaCppF32Buffer,
++            lam2: *mut BulletOuCudaCppF32Buffer,
++            p2: *mut BulletOuCudaCppF32Buffer,
++            g2: *mut BulletOuCudaCppF32Buffer,
++            u: *mut BulletOuCudaCppF32Buffer,
++            h3: *mut BulletOuCudaCppF32Buffer,
++            lam3: *mut BulletOuCudaCppF32Buffer,
++            p3: *mut BulletOuCudaCppF32Buffer,
++            out: *mut BulletOuCudaCppF32Buffer,
++            lgrad: *mut BulletOuCudaCppF32Buffer,
++            lps: *mut BulletOuCudaCppF32Buffer,
++            l2_gradients: *mut BulletOuCudaCppF32Buffer,
++            l1_gradients: *mut BulletOuCudaCppF32Buffer,
++            combined_gradients: *mut BulletOuCudaCppF32Buffer,
++            stm_l0_pre_gradients: *mut BulletOuCudaCppF32Buffer,
++            nstm_l0_pre_gradients: *mut BulletOuCudaCppF32Buffer,
++            l0w_gradients: *mut BulletOuCudaCppF32Buffer,
++            l0b_gradients: *mut BulletOuCudaCppF32Buffer,
++            l1w_gradients: *mut BulletOuCudaCppF32Buffer,
++            l1b_gradients: *mut BulletOuCudaCppF32Buffer,
++            l1fw_gradients: *mut BulletOuCudaCppF32Buffer,
++            l1fb_gradients: *mut BulletOuCudaCppF32Buffer,
++            l1axw_gradients: *mut BulletOuCudaCppF32Buffer,
++            l1axb_gradients: *mut BulletOuCudaCppF32Buffer,
++            l2w_gradients: *mut BulletOuCudaCppF32Buffer,
++            l2b_gradients: *mut BulletOuCudaCppF32Buffer,
++            l2fw_gradients: *mut BulletOuCudaCppF32Buffer,
++            l2fb_gradients: *mut BulletOuCudaCppF32Buffer,
++            l2axw_gradients: *mut BulletOuCudaCppF32Buffer,
++            l2axb_gradients: *mut BulletOuCudaCppF32Buffer,
++            l3w_gradients: *mut BulletOuCudaCppF32Buffer,
++            l3b_gradients: *mut BulletOuCudaCppF32Buffer,
++            l3fw_gradients: *mut BulletOuCudaCppF32Buffer,
++            l3fb_gradients: *mut BulletOuCudaCppF32Buffer,
++            l3axw_gradients: *mut BulletOuCudaCppF32Buffer,
++            l3axb_gradients: *mut BulletOuCudaCppF32Buffer,
++            zero_parameter_gradients: i32,
++            steps: usize,
++            alpha: f32,
++            rho: f32,
++            eta: f32,
++        ) -> i32;
++
+         pub fn bulletou_cuda_cpp_sfnn_backward_train_device(
+             ctx: *mut BulletOuCudaCppContext,
+             input_size: usize,
+diff --git a/examples/bulletou.rs b/examples/bulletou.rs
+index c0bba748..21c39d9a 100644
+--- a/examples/bulletou.rs
++++ b/examples/bulletou.rs
+@@ -1444,6 +1444,16 @@ impl PlateauMonitor {
+     }
+ }
+ 
++/// fast_suisho experiment-011 local patch: credit assignment for the SFNN cuda-cpp trainer.
++#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
++#[clap(rename_all = "lowercase")]
++enum CreditMode {
++    /// Backpropagation (upstream behaviour).
++    Bp,
++    /// Augmented Lagrangian Predictive Coding (Seely & Gould 2026); `--pcalm-alpha 0` = plain PC.
++    Pcalm,
++}
++
+ #[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+ #[clap(rename_all = "lowercase")]
+ enum TestSampleMode {
+@@ -2602,6 +2612,29 @@ struct Args {
+     #[arg(long = "no-sfnn-factorized", conflicts_with = "sfnn_factorizer")]
+     no_sfnn_factorized: bool,
+ 
++    /// fast_suisho experiment-011 local patch: credit assignment for the SFNN
++    /// cuda-cpp trainer. `bp` (default) is unchanged backpropagation; `pcalm`
++    /// replaces the backward pass with PC-ALM inference (states = pairwise
++    /// output, L1 output, L2 output; T primal steps, T-1 dual steps per batch).
++    #[arg(long, value_enum, default_value = "bp")]
++    credit: CreditMode,
++
++    /// PC-ALM inference budget T (primal steps per mini-batch).
++    #[arg(long, default_value = "8")]
++    pcalm_steps: usize,
++
++    /// PC-ALM dual step size alpha (0 = plain predictive coding).
++    #[arg(long, default_value = "1.0")]
++    pcalm_alpha: f32,
++
++    /// PC-ALM quadratic penalty rho.
++    #[arg(long, default_value = "1.0")]
++    pcalm_rho: f32,
++
++    /// PC-ALM per-sample state step size eta_h. Required with `--credit pcalm`.
++    #[arg(long)]
++    pcalm_eta_h: Option<f32>,
++
+     /// Held-out test set (.hcpe / .psv / .bin) for sign-agreement validation
+     /// during training. When set, the trainer runs validation after
+     /// each validation event (= every `--validation-rate` superbatches,
+@@ -2797,6 +2830,21 @@ impl Args {
+         if self.sfnn_factorizer.is_some() && !eval_type.uses_layerstack() {
+             return Err("--sfnn-factorizer currently applies to SFNN / LayerStack eval types only".to_string());
+         }
++        if self.credit == CreditMode::Pcalm {
++            if !eval_type.uses_layerstack() {
++                return Err("--credit pcalm applies to SFNN / LayerStack eval types only".to_string());
++            }
++            if self.backend.cli_name() != "cuda-cpp" {
++                return Err("--credit pcalm requires --backend cuda-cpp".to_string());
++            }
++            if self.win_rate_model {
++                return Err("--credit pcalm supports the sigmoid-MSE loss only (no --win-rate-model)".to_string());
++            }
++            if self.cuda_cpp_profile_steps != 0 {
++                return Err("--credit pcalm cannot be combined with --cuda-cpp-profile-steps".to_string());
++            }
++            pcalm_config(self)?;
++        }
+         if !(self.loss_pow_exp.is_finite() && self.loss_pow_exp >= 1.0) {
+             return Err(format!("--loss-pow-exp must be finite and >= 1 (got {})", self.loss_pow_exp));
+         }
+@@ -5993,6 +6041,27 @@ fn run_cuda_cpp_sfnn_direct_steps(args: &Args, feature_kind: CudaCppSfnnFeatureK
+         ),
+     }
+     .map_err(|e| e.to_string())?;
++    let pcalm_settings = pcalm_config(args)?;
++    let enable_pcalm = |runner: &mut SfnnTrainStepRunner| -> Result<(), String> {
++        if let Some(p) = pcalm_settings {
++            runner
++                .enable_pcalm(
++                    &ctx,
++                    bulletou_cuda_cpp::SfnnPcalmConfig { steps: p.steps, alpha: p.alpha, rho: p.rho, eta_h: p.eta_h },
++                )
++                .map_err(|e| e.to_string())?;
++        }
++        Ok(())
++    };
++    enable_pcalm(&mut runner)?;
++    if let Some(p) = pcalm_settings {
++        eprintln!(
++            "  credit = PC-ALM (fast_suisho experiment-011): steps={} alpha={} rho={} eta_h={}",
++            p.steps, p.alpha, p.rho, p.eta_h
++        );
++    } else {
++        eprintln!("  credit = backprop");
++    }
+     let upload_ctx = Context::new(device).map_err(|e| e.to_string())?;
+ 
+     let loss_kind = cuda_cpp_scalar_loss_kind(args);
+@@ -6195,6 +6264,7 @@ fn run_cuda_cpp_sfnn_direct_steps(args: &Args, feature_kind: CudaCppSfnnFeatureK
+                         factorizer_active,
+                     )
+                     .map_err(|e| e.to_string())?;
++                    enable_pcalm(&mut runner)?;
+                     completed_steps = snapshot_completed_steps;
+                     excluded_elapsed = excluded_elapsed.saturating_add(checkpoint_started.elapsed());
+                 } else {
+@@ -10531,6 +10601,35 @@ const RESUME_CONFIG_NAME: &str = "resume-config.txt";
+ /// continuing a trained model on a new teacher is a supported workflow, but
+ /// changing controls such as `--superbatches` or LR policy should require an
+ /// explicit `--resume`.
++/// fast_suisho experiment-011: PC-ALM settings from the CLI (`None` for BP).
++#[derive(Debug, Clone, Copy, PartialEq)]
++struct PcalmSettings {
++    steps: usize,
++    alpha: f32,
++    rho: f32,
++    eta_h: f32,
++}
++
++fn pcalm_config(args: &Args) -> Result<Option<PcalmSettings>, String> {
++    if args.credit != CreditMode::Pcalm {
++        return Ok(None);
++    }
++    let eta_h = args.pcalm_eta_h.ok_or_else(|| "--credit pcalm requires --pcalm-eta-h".to_string())?;
++    if args.pcalm_steps == 0 {
++        return Err("--pcalm-steps must be at least 1".to_string());
++    }
++    if !(args.pcalm_alpha.is_finite() && args.pcalm_alpha >= 0.0) {
++        return Err("--pcalm-alpha must be finite and >= 0".to_string());
++    }
++    if !(args.pcalm_rho.is_finite() && args.pcalm_rho >= 0.0) {
++        return Err("--pcalm-rho must be finite and >= 0".to_string());
++    }
++    if !(eta_h.is_finite() && eta_h > 0.0) {
++        return Err("--pcalm-eta-h must be finite and > 0".to_string());
++    }
++    Ok(Some(PcalmSettings { steps: args.pcalm_steps, alpha: args.pcalm_alpha, rho: args.pcalm_rho, eta_h }))
++}
++
+ fn resume_signature(args: &Args) -> String {
+     let positions_per_superbatch = effective_positions_per_superbatch(args).unwrap_or(DEFAULT_POSITIONS_PER_SUPERBATCH);
+     let batches_per_superbatch = effective_batches_per_superbatch(args).unwrap_or(1);
+@@ -10540,7 +10639,7 @@ fn resume_signature(args: &Args) -> String {
+     let superbatches = args.superbatches.map(|n| n.to_string()).unwrap_or_else(|| "none".to_string());
+     let test_teacher =
+         args.test_teacher.as_ref().map(|p| p.display().to_string()).unwrap_or_else(|| "none".to_string());
+-    [
++    let mut lines = vec![
+         "schema=bulletou-resume-v3".to_string(),
+         format!("backend={}", args.backend.cli_name()),
+         format!("eval_type={}", args.eval_type().cli_name()),
+@@ -10592,9 +10691,18 @@ fn resume_signature(args: &Args) -> String {
+         format!("test_batch_size={}", args.test_batch_size),
+         format!("test_sample={}", args.test_sample.cli_name()),
+         format!("test_seed={}", args.test_seed),
+-    ]
+-    .join("\n")
+-        + "\n"
++    ];
++    // fast_suisho experiment-011: BP signatures stay identical to upstream; PC-ALM runs add one line.
++    if args.credit == CreditMode::Pcalm {
++        lines.push(format!(
++            "credit=pcalm steps={} alpha={:.9} rho={:.9} eta_h={:.9}",
++            args.pcalm_steps,
++            args.pcalm_alpha,
++            args.pcalm_rho,
++            args.pcalm_eta_h.unwrap_or(f32::NAN)
++        ));
++    }
++    lines.join("\n") + "\n"
+ }
+ 
+ fn write_resume_config(output_dir: &std::path::Path, args: &Args) -> std::io::Result<()> {
