@@ -286,3 +286,225 @@ priority = 25
 engine = "~/engines/yane-9133c527-finny-avx2/YaneuraOu-by-gcc"
 note = "M2: PC (α=0) の参照 arm。出力側 1/2 の書き出し (k=2), FV_SCALE 24"
 
+
+# M4 (select_queue.py が自動で追加)
+[[job]]
+name = "sel-full-bp-lr0.7-lrmin3-e5@32-vs-s11@32-300k"
+a = "011-f-bp-lr0.7-lrmin3/0005"
+a_fv = 32
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "M4 選択 (bp, e5, FV_SCALE 32)"
+
+[[job]]
+name = "sel-full-bp-lr0.7-lrmin3-e5@40-vs-s11@32-300k"
+a = "011-f-bp-lr0.7-lrmin3/0005"
+a_fv = 40
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "M4 選択 (bp, e5, FV_SCALE 40)"
+
+[[job]]
+name = "sel-full-bp-lr0.7-lrmin3-e5@48-vs-s11@32-300k"
+a = "011-f-bp-lr0.7-lrmin3/0005"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "M4 選択 (bp, e5, FV_SCALE 48)"
+
+[[job]]
+name = "sel-full-bp-lr0.7-lrmin3-e5@56-vs-s11@32-300k"
+a = "011-f-bp-lr0.7-lrmin3/0005"
+a_fv = 56
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "M4 選択 (bp, e5, FV_SCALE 56)"
+
+[[job]]
+name = "sel-full-bp-lr0.7-lrmin3-e5@64-vs-s11@32-300k"
+a = "011-f-bp-lr0.7-lrmin3/0005"
+a_fv = 64
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "M4 選択 (bp, e5, FV_SCALE 64)"
+
+[[job]]
+name = "sel-full-bp-lr0.7-lrmin3-e8@32-vs-s11@32-300k"
+a = "011-f-bp-lr0.7-lrmin3/0008"
+a_fv = 32
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "M4 選択 (bp, e8, FV_SCALE 32)"
+
+[[job]]
+name = "sel-full-bp-lr0.7-lrmin3-e8@40-vs-s11@32-300k"
+a = "011-f-bp-lr0.7-lrmin3/0008"
+a_fv = 40
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "M4 選択 (bp, e8, FV_SCALE 40)"
+
+[[job]]
+name = "sel-full-bp-lr0.7-lrmin3-e8@48-vs-s11@32-300k"
+a = "011-f-bp-lr0.7-lrmin3/0008"
+a_fv = 48
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "M4 選択 (bp, e8, FV_SCALE 48)"
+
+[[job]]
+name = "sel-full-bp-lr0.7-lrmin3-e8@56-vs-s11@32-300k"
+a = "011-f-bp-lr0.7-lrmin3/0008"
+a_fv = 56
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "M4 選択 (bp, e8, FV_SCALE 56)"
+
+[[job]]
+name = "sel-full-bp-lr0.7-lrmin3-e8@64-vs-s11@32-300k"
+a = "011-f-bp-lr0.7-lrmin3/0008"
+a_fv = 64
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "M4 選択 (bp, e8, FV_SCALE 64)"
+
+[[job]]
+name = "sel-full-pcalm-T4-gn-e5@16-vs-s11@32-300k"
+a = "/mnt/D/sugiyama/011/rescaled/011-f-pcalm-T4-gn-e5"
+a_fv = 16
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "M4 選択 (pcalm, e5, FV_SCALE 16 = 32 相当, 出力側 1/2)"
+
+[[job]]
+name = "sel-full-pcalm-T4-gn-e5@20-vs-s11@32-300k"
+a = "/mnt/D/sugiyama/011/rescaled/011-f-pcalm-T4-gn-e5"
+a_fv = 20
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "M4 選択 (pcalm, e5, FV_SCALE 20 = 40 相当, 出力側 1/2)"
+
+[[job]]
+name = "sel-full-pcalm-T4-gn-e5@24-vs-s11@32-300k"
+a = "/mnt/D/sugiyama/011/rescaled/011-f-pcalm-T4-gn-e5"
+a_fv = 24
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "M4 選択 (pcalm, e5, FV_SCALE 24 = 48 相当, 出力側 1/2)"
+
+[[job]]
+name = "sel-full-pcalm-T4-gn-e5@28-vs-s11@32-300k"
+a = "/mnt/D/sugiyama/011/rescaled/011-f-pcalm-T4-gn-e5"
+a_fv = 28
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "M4 選択 (pcalm, e5, FV_SCALE 28 = 56 相当, 出力側 1/2)"
+
+[[job]]
+name = "sel-full-pcalm-T4-gn-e5@32-vs-s11@32-300k"
+a = "/mnt/D/sugiyama/011/rescaled/011-f-pcalm-T4-gn-e5"
+a_fv = 32
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "M4 選択 (pcalm, e5, FV_SCALE 32 = 64 相当, 出力側 1/2)"
+
+[[job]]
+name = "sel-full-pcalm-T4-gn-e8@16-vs-s11@32-300k"
+a = "/mnt/D/sugiyama/011/rescaled/011-f-pcalm-T4-gn-e8"
+a_fv = 16
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "M4 選択 (pcalm, e8, FV_SCALE 16 = 32 相当, 出力側 1/2)"
+
+[[job]]
+name = "sel-full-pcalm-T4-gn-e8@20-vs-s11@32-300k"
+a = "/mnt/D/sugiyama/011/rescaled/011-f-pcalm-T4-gn-e8"
+a_fv = 20
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "M4 選択 (pcalm, e8, FV_SCALE 20 = 40 相当, 出力側 1/2)"
+
+[[job]]
+name = "sel-full-pcalm-T4-gn-e8@24-vs-s11@32-300k"
+a = "/mnt/D/sugiyama/011/rescaled/011-f-pcalm-T4-gn-e8"
+a_fv = 24
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "M4 選択 (pcalm, e8, FV_SCALE 24 = 48 相当, 出力側 1/2)"
+
+[[job]]
+name = "sel-full-pcalm-T4-gn-e8@28-vs-s11@32-300k"
+a = "/mnt/D/sugiyama/011/rescaled/011-f-pcalm-T4-gn-e8"
+a_fv = 28
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "M4 選択 (pcalm, e8, FV_SCALE 28 = 56 相当, 出力側 1/2)"
+
+[[job]]
+name = "sel-full-pcalm-T4-gn-e8@32-vs-s11@32-300k"
+a = "/mnt/D/sugiyama/011/rescaled/011-f-pcalm-T4-gn-e8"
+a_fv = 32
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 30
+note = "M4 選択 (pcalm, e8, FV_SCALE 32 = 64 相当, 出力側 1/2)"
+
