@@ -100,6 +100,9 @@ def main() -> None:
     l3fw, l3fb = rec("l3fw", (L2,)), rec("l3fb", (1,))
     w1_row7 = l1w[:, L1_H, :] + l1fw[:, L1_H][None, :]
     b1_7 = l1b[:, L1_H] + l1fb[L1_H]
+    w1_rest = l1w[:, :L1_H, :] + l1fw[:, :L1_H].T[None, :, :]  # 縮められない行 (z1² の枝に入る)
+    l2w, l2fw = rec("l2w", (STACKS, L2, 2 * L1_H)), rec("l2fw", (L2, 2 * L1_H))
+    w2 = l2w + l2fw[None, :, :]
     w3 = l3w + l3fw[None, :]
     b3 = l3b + l3fb[0]
     max_abs = float(max(np.abs(w3).max(), np.abs(w1_row7).max()))
@@ -132,6 +135,11 @@ def main() -> None:
         "max_abs_w1eff_row7": float(np.abs(w1_row7).max()),
         "frac_w3eff_beyond_int8_before": float((np.abs(w3) > W_MAX).mean()),
         "frac_w3eff_beyond_int8_after": float((np.abs(w3 / k) > W_MAX).mean()),
+        # 以下は縮めない層 (BulletOu の書き出しの int8 clip がそのまま効く)。0 でなければ量子化で関数が変わっている
+        "max_abs_w1eff_rows0_6": float(np.abs(w1_rest).max()),
+        "frac_w1eff_rows0_6_beyond_int8": float((np.abs(w1_rest) > W_MAX).mean()),
+        "max_abs_w2eff": float(np.abs(w2).max()),
+        "frac_w2eff_beyond_int8": float((np.abs(w2) > W_MAX).mean()),
         "note": "出力側 (L3 と L1 の shortcut 行) を 1/k 倍。探索での評価値を元と同じにするには FV_SCALE を 1/k 倍にする",
     }
     (args.out / "nn.bin.json").write_text(json.dumps(meta, indent=1, ensure_ascii=False) + "\n")
