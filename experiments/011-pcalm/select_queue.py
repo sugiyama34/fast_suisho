@@ -33,6 +33,7 @@ GAMES = HERE / "games"
 STATE = Path("/mnt/D/sugiyama/011/select_state.json")
 RESCALED = Path("/mnt/D/sugiyama/011/rescaled")
 
+CKPT = HERE.parents[1] / "data" / "bulletou" / "checkpoints"
 RUNS = {
     "bp": {"arm": "f-bp-lr0.7-lrmin3", "k": 1, "label": "full-bp-lr0.7-lrmin3"},
     "pcalm": {"arm": "f-pcalm-T4-gn", "k": 2, "label": "full-pcalm-T4-gn"},
@@ -42,6 +43,17 @@ EPOCHS = (5, 8, 12, 16, 20)
 SEL_PAIRS = 400
 FINAL_PAIRS = 2000
 OPP = 'b = "suisho11"\nb_fv = 32'
+
+
+def runs() -> dict:
+    """主の 2 手法に、本番規模の PC (α=0) の run があれば加える (T は start-full-pc.sh が調整対局で決める)。
+    PC は格子と 2,000 ペアの測り直しまで (副次の結果, hypothesis.md §4.5)。直接対局は PC-ALM vs BP のみ。"""
+    out = dict(RUNS)
+    pcs = sorted(d.name for d in CKPT.glob("011-f-pc-T*-gn") if d.is_dir())
+    if len(pcs) == 1:
+        arm = pcs[0].removeprefix("011-")
+        out["pc"] = {"arm": arm, "k": 2, "label": "full-" + arm.removeprefix("f-")}
+    return out
 
 
 def net(run: dict, ep: int) -> str:
@@ -170,11 +182,11 @@ def main() -> None:
         have = existing_jobs()
         add: list[str] = []
         states = {}
-        for key, run in RUNS.items():
+        for key, run in runs().items():
             jobs, st = plan_run(key, run, have)
             add += jobs
             states[key] = st
-        if all("best" in states[k] for k in RUNS):
+        if all("best" in states[k] for k in ("bp", "pcalm")):
             pb, bb = states["pcalm"]["best"], states["bp"]["best"]
             name = (
                 f"direct-{RUNS['pcalm']['label']}-e{pb['epoch']}@{pb['fv']}"
