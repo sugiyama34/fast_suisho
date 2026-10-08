@@ -7,7 +7,8 @@ service account キーで以下を実測する:
   D. 削除権限 — SA キーで自分の run を削除できるか (ドキュメント未記載の実測)
   E. alert 配信 — email 帰属付きで run.alert() が届くか
 
-使い方: uv run python experiments/004-wandb-verify/verify.py
+使い方: WANDB_USER_EMAIL=<チーム member のメール> uv run python experiments/004-wandb-verify/verify.py
+(E で使う。メールアドレスは公開リポジトリに残さないため、スクリプトに直書きせず環境変数で渡す)
 """
 
 from __future__ import annotations
@@ -73,7 +74,10 @@ def main() -> None:
 
     # E. alert 配信 — email 帰属を付けて送信 (届いたかは人間が確認)
     try:
-        os.environ["WANDB_USER_EMAIL"] = "sugiyama.satoshi1990@gmail.com"
+        if not os.environ.get("WANDB_USER_EMAIL"):
+            raise RuntimeError(
+                "WANDB_USER_EMAIL 未設定 — W&B チーム member のメールを環境変数で渡して再実行"
+            )
         with init_run("004-wandb-verify", {"purpose": "alert-test"}) as r:
             r.alert(
                 "WandB 統合検証",
