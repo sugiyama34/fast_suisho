@@ -171,10 +171,10 @@ Admin キーはチーム内の全削除権限を持つため。
       エージェントの全 run は SA 作成のため、実質「チーム内の agent run は全て削除可能」
       が確定した blast radius
 - [x] `WANDB_USER_EMAIL` 帰属付き `run.alert()` → **受信確認済み (2026-07-27)**。
-      service account run からでも alert は届く。必要条件: (1) スクリプト側で
+      service account run からでも alert は届く。必要条件: (1) 環境変数
       `WANDB_USER_EMAIL` にチーム member のメールを設定 (tools/wandb_utils.py の
-      alert 利用時の規約)、(2) User Settings → Alerts で **wandb.alert()** 行の
-      Email トグルを ON (現 UI 名。旧称「Scriptable run alerts」)。
+      alert 利用時の規約。公開リポジトリなのでメールアドレスはスクリプトに直書きしない)、
+      (2) User Settings → Alerts で **wandb.alert()** 行の Email トグルを ON (現 UI 名。旧称「Scriptable run alerts」)。
       初回テストの不達は再現せず (遅延または迷惑メール分類の可能性)。
       より高機能な通知が欲しくなったら project Automations (Run status change +
       Slack/webhook) が W&B の推奨
