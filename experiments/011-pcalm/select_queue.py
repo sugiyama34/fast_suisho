@@ -52,7 +52,12 @@ def runs() -> dict:
     pcs = sorted(d.name for d in CKPT.glob("011-f-pc-T*-gn") if d.is_dir())
     if len(pcs) == 1:
         arm = pcs[0].removeprefix("011-")
-        out["pc"] = {"arm": arm, "k": 2, "label": "full-" + arm.removeprefix("f-")}
+        out["pc"] = {
+            "arm": arm,
+            "k": 2,
+            "label": "full-" + arm.removeprefix("f-"),
+            "prio_offset": 30,  # 副次なので、主の 2 手法の格子・最終・直接対局の後に回す
+        }
     return out
 
 
@@ -104,6 +109,7 @@ def plan_run(key: str, run: dict, have: set[str]) -> tuple[list[str], dict]:
                 + (f" = {fv * k} 相当, 出力側 1/{k}" if k != 1 else "")
                 + ")"
             )
+            pr += run.get("prio_offset", 0)
             out.append(job_text(name, net(run, ep), fv, OPP, SEL_PAIRS, pr, note))
             have.add(name)
 
@@ -165,7 +171,11 @@ def plan_run(key: str, run: dict, have: set[str]) -> tuple[list[str], dict]:
             note = f"M4 最終 ({key} の最良, 2,000 ペア)" + (
                 f", FV_SCALE {bfv} = {bfv * k} 相当" if k != 1 else ""
             )
-            out.append(job_text(name, net(run, bep), bfv, OPP, FINAL_PAIRS, 40, note))
+            out.append(
+                job_text(
+                    name, net(run, bep), bfv, OPP, FINAL_PAIRS, 40 + run.get("prio_offset", 0), note
+                )
+            )
             have.add(name)
     return out, state
 
