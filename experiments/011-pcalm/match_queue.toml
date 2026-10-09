@@ -879,3 +879,16 @@ pairs = 400
 priority = 60
 note = "M4 選択 (pc, e8, FV_SCALE 32 = 64 相当, 出力側 1/2)"
 
+
+# M4 (select_queue.py が自動で追加)
+[[job]]
+name = "sel-full-bp-lr0.7-lrmin3-e16@32-vs-s11@32-300k"
+a = "011-f-bp-lr0.7-lrmin3/0016"
+a_fv = 32
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 33
+note = "M4 選択 (bp, e16, FV_SCALE 32)"
+
