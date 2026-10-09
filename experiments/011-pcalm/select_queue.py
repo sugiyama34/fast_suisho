@@ -38,6 +38,7 @@ RUNS = {
     "bp": {"arm": "f-bp-lr0.7-lrmin3", "k": 1, "label": "full-bp-lr0.7-lrmin3"},
     "pcalm": {"arm": "f-pcalm-T4-gn", "k": 2, "label": "full-pcalm-T4-gn"},
 }
+REP = {"arm": "f-bp-lr0.7-lrmin3-rot", "k": 1, "label": "full-bp-lr0.7-lrmin3-rot"}
 BASE = (32, 40, 48, 56, 64)
 EPOCHS = (5, 8, 12, 16, 20)
 SEL_PAIRS = 400
@@ -216,6 +217,19 @@ def main() -> None:
                         "M4 直接対局 (PC-ALM の最良 vs BP の最良, 同じ開始局面)",
                     )
                 )
+        if "best" in states["bp"] and (CKPT / f"011-{REP['arm']}").is_dir():
+            # ノイズ床 (§4.5 の N): BP の複製を BP の最良と同じ (epoch, FV_SCALE) で、同じ 2,000 ペアの開始局面で測る
+            bb = states["bp"]["best"]
+            name = f"noise-{REP['label']}-e{bb['epoch']}@{bb['fv']}-vs-s11@32-300k-{FINAL_PAIRS}p"
+            states["noise"] = {"name": name, "elo": result(name)}
+            if name not in have:
+                note = (
+                    "M4 ノイズ床 (BP の複製 = 教師の順序を回転, BP の最良と同じ epoch / FV_SCALE)"
+                )
+                add.append(
+                    job_text(name, net(REP, bb["epoch"]), bb["fv"], OPP, FINAL_PAIRS, 46, note)
+                )
+                have.add(name)
         bad = sorted(
             n for st in states.values() if isinstance(st, dict) for n in st.get("failed", [])
         )
