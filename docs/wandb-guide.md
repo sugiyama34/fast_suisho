@@ -137,7 +137,10 @@ Admin キーはチーム内の全削除権限を持つため。
 ## 3. 運用規約 (エージェント・人間共通)
 
 - ログは必ず `tools/wandb_utils.py` の `init_run()` 経由。`wandb.init()` 直接呼び出し禁止
-- **`wandb login` 禁止** (~/.netrc に平文永続化されるため)。キーは masking 経由のみ
+- **エージェントは `wandb login` を実行しない** (`wandb-guard.sh` がブロック)。当初 (2026-07-27) は
+  ~/.netrc への平文永続化を避けるため人間も禁止としていたが、**2026-10-06 にユーザーが kajiki で
+  `wandb login` を実行し、キーは ~/.netrc (権限 600) に置き、環境変数には置かない方針に変更**した。
+  experiment-011 の supervisor は ~/.netrc の資格情報を検出して online で記録する (無ければ offline)
 - **sweep は当面ブロック** (禁止理由はデータ容量ではない):
   (1) sweeps は `WANDB_MODE` を無視してクラウド同期する既知バグがあり
   ([wandb/wandb#6234](https://github.com/wandb/wandb/issues/6234))、現行の online
@@ -154,6 +157,52 @@ Admin キーはチーム内の全削除権限を持つため。
   artifact はファイル単位で重複排除されるため差分の小さい版は安い)
 - 学習発散等の通知は `run.alert()` を呼ぶが、service account run では届かない可能性
   あり (§5)。確実な通知が必要なら W&B Automations (project 単位の Slack/webhook) を設定
+
+### 3.1 run の名前と整理 (2026-10-06 決定。experiment-011 から)
+
+| 項目 | 規約 | 例 |
+| --- | --- | --- |
+| **run 名** (`init_run(name=...)` → `wandb.init(name=...)`) | **`<規模>-<手法>-<既定と違う設定>`**。checkpoint のフォルダ名 `<実験番号>-<arm>` から実験番号を除き、規模の 1 文字を書き下したもの (`s` → `small`, `f` → `full`)。設定の書き方はフォルダ名と同じ (各実験の `arms.py` の文法)。空白・`/` は使わない | `small-bp-lr1`, `small-bp-lr1-rot`, `small-pcalm-T4-a1.5-etaA0.75`, `full-bp-rot` |
+| run ID | 自動生成に任せる。再利用しない (resume しない, `init_run` が `WANDB_RUN_ID` を捨てる) | |
+| group | 実験 (実験フォルダ名) | `011-pcalm` |
+| job_type | 処理の種類 | `train`, `eval` |
+| config | **全ハイパーパラメータ**に加え、arm 名 (`name`)・手法 (`method`)・規模 (`scale`)・run 名 (`run_name`)・checkpoint のフォルダ (`checkpoint_dir`) を入れる。UI での Group By・絞り込みは config の値で行う | `checkpoint_dir: data/bulletou/checkpoints/011-s-pcalm-T4` |
+| tags | 絞り込み用の補助ラベル (arm 名・手法・規模など) | `s-pcalm-T4`, `pcalm`, `s` |
+| 改名 | UI の "Edit run name" か Public API。UI の **display name** は workspace ごとの表示の上書きで、run 名とは別物 (使わない) | 下のコード |
+
+```python
+run = wandb.Api().run("suisho/pcalm_vs_backprop/<run-id>")
+run.name = "small-pcalm-T4"
+run.update()
+```
+
+根拠 (W&B 公式ドキュメント。docs.wandb.ai は 2026 年に docs.coreweave.com へリダイレクトされるようになったが、パスはそのまま使える。
+日付は github.com/wandb/docs の各ページのソースの最終更新):
+
+- run 名と run ID ([Run identifiers](https://docs.wandb.ai/models/runs/run-identifiers), 2026-08-25):
+  "Each run has a human-readable, non-unique run name." 改名は Public API (`run.name = ...; run.update()`) か UI の "Edit run name"。
+  "If you change a run's display name in one workspace, the display name changes only for that workspace." (display name は workspace 単位)
+- run 名は短く、ハイパーパラメータは config へ ([`wandb.init` reference](https://docs.wandb.ai/models/ref/python/functions/init), 2026-08-31):
+  "A short display name for this run… Keeping these run names brief enhances readability in chart legends and tables.
+  For saving hyperparameters, we recommend using the `config` field."
+  → 全設定を名前に入れず、既定と違う設定だけを名前に、全設定は config に置く
+- run ID は一意で再利用できない (同上 / [Delete runs](https://docs.wandb.ai/models/runs/delete-runs), 2026-09-11):
+  "A run ID cannot be reused, even after the run is deleted."
+- group / job_type / tags / notes / config の役割 (`wandb.init` reference): group は "organize individual runs as part of a larger
+  experiment"、job_type は "especially helpful when organizing runs within a group"、tags は "organizing runs or adding temporary
+  identifiers like 'baseline'"、config は "allowing you to group, filter, and sort runs based on these parameters"。
+  [Create an experiment](https://docs.wandb.ai/models/track/create-an-experiment) (2026-07-23) の Best practices:
+  config には "hyperparameters, model architecture, dataset information, and other values needed to reproduce your model"
+- **タグでは Group By できない** ([Can you group runs by tags?](https://docs.wandb.ai/support/models/articles/can-you-group-runs-by-tags), 2026-06-02):
+  "A run can have multiple tags, so grouping by tags isn't supported. Instead, add a value to the `config`… and group by this config value."
+  → arm・手法・規模は tags だけでなく config にも入れる
+- 文字数・使える文字: run 名には文書化された上限・禁止文字が見当たらない (公式の指針は「短く」だけ)。tags は SDK が 1〜64 文字に制限、
+  project 名は 128 文字まで (SDK `wandb/sdk/wandb_settings.py`)。フォルダ名と同じ文字種 (英数字・`-`・`.`) に揃え、凡例で読める長さにする
+- ローカルのファイルとの対応: W&B 自体の仕組みは Artifacts (例: [reference artifact](https://docs.wandb.ai/models/artifacts/track-external-files), 2026-09-11,
+  "The files themselves never leave your system")。本プロジェクトは checkpoint を artifact にしない代わりに、run 名をフォルダ名と 1 対 1 にし、
+  config に `checkpoint_dir` を入れる
+- 実験の記録全般: Google の [Deep Learning Tuning Playbook](https://github.com/google-research/tuning_playbook) ("Setting up experiment tracking", 2024-06-13):
+  短い study 名 + 設定の置き場所へのリンク + 短い説明を推奨し、"Untracked experiments might as well not exist." とする
 
 ## 4. 検証チェックリスト (2026-07-27 実施。スクリプト: `experiments/004-wandb-verify/`)
 
@@ -204,3 +253,4 @@ Admin キーはチーム内の全削除権限を持つため。
 - [Artifact TTL](https://docs.wandb.ai/guides/artifacts/ttl/) / [Alerts](https://docs.wandb.ai/guides/runs/alert/) / [Rate limits](https://docs.wandb.ai/models/track/limits)
 - [wandb-mcp-server](https://github.com/wandb/wandb-mcp-server)
 - [Claude Code sandboxing (credential masking)](https://code.claude.com/docs/en/sandboxing.md)
+- run の命名と整理 (§3.1): [Run identifiers](https://docs.wandb.ai/models/runs/run-identifiers) / [`wandb.init` reference](https://docs.wandb.ai/models/ref/python/functions/init) / [Create an experiment](https://docs.wandb.ai/models/track/create-an-experiment) / [Group runs](https://docs.wandb.ai/models/runs/grouping) / [Can you group runs by tags?](https://docs.wandb.ai/support/models/articles/can-you-group-runs-by-tags) / [Deep Learning Tuning Playbook](https://github.com/google-research/tuning_playbook)

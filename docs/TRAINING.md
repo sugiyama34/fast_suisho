@@ -65,7 +65,9 @@
   experiment-006/007 は project `20260728_BulletOu_with_Sojo_data`
   (group = 実験名)。experiment-009 以降のデータアブレーション系列は project
   `data_ablation_study` (2026-09-28 作成)。`.claude/settings.json` の既定 project もこれに
-  切り替えた。API キーはファイルに書かず、起動シェルの環境変数でだけ渡す (`docs/SETUP.md` §1)
+  切り替えた。experiment-011 (PC-ALM) は project `pcalm_vs_backprop`。API キーは 2026-10-06 から
+  ユーザーが `wandb login` で `~/.netrc` に置く (環境変数には置かない, `docs/SETUP.md` §1)。
+  run の命名規約は `docs/wandb-guide.md` §3.1 (`small-bp-lr1` のように checkpoint のフォルダ名と対応させる)
 - 学習の起動は `experiments/<実験>/train_supervised.py` 経由が標準
   (トレーナと W&B run のライフサイクルを一体で管理する)
 - 旧開発機では GPU が Claude Code の sandbox から見えなかったため、学習は実端末から
