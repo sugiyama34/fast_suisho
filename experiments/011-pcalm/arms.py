@@ -43,7 +43,7 @@ SMALL_FILES = [1, 3, 6, 11, 13, 16, 21, 23, 26]
 FULL_FILES = list(range(1, 31))
 _TOKEN = re.compile(r"^(T|a|r|etaA|eta|lrmin|lr)([0-9.e-]+)$")
 _EPS = re.compile(r"^eps([0-9.]+)e([0-9]+)$")
-# BP の FT の勾配の典型的な大きさ: 非ゼロ要素の mean |g| (batch 65,536)。BP の e1 で 4.3e-7、009 の full-e16 で 3.8e-7
+# BP の FT の勾配の典型的な大きさ: 非ゼロ要素の mean |g| (batch 65,536)。BP の e1 で 4.3e-7、experiment-009 の full-e16 で 3.8e-7
 # (初期値では 2.1e-9)。gn の arm はこの値に揃える (experiment-011 notes/m0.md)
 GRAD_NORM_REF = 4.0e-7
 # Ranger の epsilon の較正 (2026-10-06, M0): BP の e1 (011-s-bp-lr1/0001) の重み、8,192 局面で、FT の勾配の

@@ -5,7 +5,7 @@
 - [decisions.md](decisions.md): 実行中の決定の記録
 - [m0.md](m0.md): 参照実装・勾配の検証 (CUDA と Python、KKT 点)・勾配の向きと推論の刻み η_h・gn・int8 の書き出し
 - `ratings.md`: 対局結果 (match_queue.py が自動で追記)
-- `replay-check-summary.json`: kajiki のエンジンで 009 の棋譜を指し直した結果 (100 局一致)
+- `replay-check-summary.json`: kajiki のエンジンで experiment-009 の棋譜を指し直した結果 (100 局一致)
 
 スクリプト (`experiments/011-pcalm/`):
 

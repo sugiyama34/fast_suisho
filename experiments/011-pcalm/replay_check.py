@@ -1,6 +1,6 @@
 """experiment-011: kajiki のエンジンが experiment-009 (suzuki) と同じ指し手を返すかの確認 (hypothesis.md §4.5)。
 
-009 の `final-full-e16@48-vs-s11@32-300k-2000p` の棋譜から先頭 N ペア (pair 0..N−1, 先後 2 局ずつ) を、
+experiment-009 の `final-full-e16@48-vs-s11@32-300k-2000p` の棋譜から先頭 N ペア (pair 0..N−1, 先後 2 局ずつ) を、
 同じエンジン・同じネット・同じ設定 (300k ノード, Threads 1, Hash 256 MB, FV_SCALE 48 / 32) で指し直し、
 全局の指し手列と結果が一致するかを数える。match_nodes.py と同じ部品 (NodesEngine, play_game) を使う。
 
