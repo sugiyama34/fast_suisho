@@ -80,6 +80,8 @@ def main() -> None:
         ("BP (e16 @ 40)", "experiment-009 の BP (full-e16 @ 48)"),
         ("BP の複製 (e16 @ 40)", "BP (e16 @ 40)"),
         ("PC-ALM (e12 @ 24 = 48 相当)", "experiment-009 の BP (full-e16 @ 48)"),
+        ("BP の複製 (e16 @ 40)", "experiment-009 の BP (full-e16 @ 48)"),
+        ("PC-ALM (e12 @ 24 = 48 相当)", "BP の複製 (e16 @ 40)"),
     ]
     out = {}
     for a, b in pairs:
