@@ -24,6 +24,7 @@ RUNS = {
     "PC-ALM (e12 @ 24 = 48 相当)": GAMES / "final-full-pcalm-T4-gn-e12@24-vs-s11@32-300k-2000p",
     "BP (e16 @ 40)": GAMES / "final-full-bp-lr0.7-lrmin3-e16@40-vs-s11@32-300k-2000p",
     "BP の複製 (e16 @ 40)": GAMES / "noise-full-bp-lr0.7-lrmin3-rot-e16@40-vs-s11@32-300k-2000p",
+    "PC α=0 T=16 (e12 @ 20 = 40 相当)": GAMES / "final-full-pc-T16-gn-e12@20-vs-s11@32-300k-2000p",
     "experiment-009 の BP (full-e16 @ 48)": GAMES_009 / "final-full-e16@48-vs-s11@32-300k-2000p",
 }
 DIRECT = GAMES / "direct-full-pcalm-T4-gn-e12@24-vs-full-bp-lr0.7-lrmin3-e16@40-300k-2000p"
@@ -82,6 +83,8 @@ def main() -> None:
         ("PC-ALM (e12 @ 24 = 48 相当)", "experiment-009 の BP (full-e16 @ 48)"),
         ("BP の複製 (e16 @ 40)", "experiment-009 の BP (full-e16 @ 48)"),
         ("PC-ALM (e12 @ 24 = 48 相当)", "BP の複製 (e16 @ 40)"),
+        ("PC α=0 T=16 (e12 @ 20 = 40 相当)", "BP (e16 @ 40)"),
+        ("PC α=0 T=16 (e12 @ 20 = 40 相当)", "PC-ALM (e12 @ 24 = 48 相当)"),
     ]
     out = {}
     for a, b in pairs:
