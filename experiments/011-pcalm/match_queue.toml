@@ -953,3 +953,139 @@ pairs = 2000
 priority = 46
 note = "M4 ノイズ床 (BP の複製 = 教師の順序を回転, BP の最良と同じ epoch / FV_SCALE)"
 
+
+# M4 (select_queue.py が自動で追加)
+[[job]]
+name = "sel-full-pc-T16-gn-e12@16-vs-s11@32-300k"
+a = "/mnt/D/sugiyama/011/rescaled/011-f-pc-T16-gn-e12"
+a_fv = 16
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 62
+note = "M4 選択 (pc, e12, FV_SCALE 16 = 32 相当, 出力側 1/2)"
+
+[[job]]
+name = "sel-full-pc-T16-gn-e12@20-vs-s11@32-300k"
+a = "/mnt/D/sugiyama/011/rescaled/011-f-pc-T16-gn-e12"
+a_fv = 20
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 62
+note = "M4 選択 (pc, e12, FV_SCALE 20 = 40 相当, 出力側 1/2)"
+
+[[job]]
+name = "sel-full-pc-T16-gn-e12@24-vs-s11@32-300k"
+a = "/mnt/D/sugiyama/011/rescaled/011-f-pc-T16-gn-e12"
+a_fv = 24
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 62
+note = "M4 選択 (pc, e12, FV_SCALE 24 = 48 相当, 出力側 1/2)"
+
+[[job]]
+name = "sel-full-pc-T16-gn-e16@16-vs-s11@32-300k"
+a = "/mnt/D/sugiyama/011/rescaled/011-f-pc-T16-gn-e16"
+a_fv = 16
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 63
+note = "M4 選択 (pc, e16, FV_SCALE 16 = 32 相当, 出力側 1/2)"
+
+[[job]]
+name = "sel-full-pc-T16-gn-e16@20-vs-s11@32-300k"
+a = "/mnt/D/sugiyama/011/rescaled/011-f-pc-T16-gn-e16"
+a_fv = 20
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 63
+note = "M4 選択 (pc, e16, FV_SCALE 20 = 40 相当, 出力側 1/2)"
+
+[[job]]
+name = "sel-full-pc-T16-gn-e16@24-vs-s11@32-300k"
+a = "/mnt/D/sugiyama/011/rescaled/011-f-pc-T16-gn-e16"
+a_fv = 24
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 63
+note = "M4 選択 (pc, e16, FV_SCALE 24 = 48 相当, 出力側 1/2)"
+
+[[job]]
+name = "sel-full-pc-T16-gn-e16@28-vs-s11@32-300k"
+a = "/mnt/D/sugiyama/011/rescaled/011-f-pc-T16-gn-e16"
+a_fv = 28
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 63
+note = "M4 選択 (pc, e16, FV_SCALE 28 = 56 相当, 出力側 1/2)"
+
+[[job]]
+name = "sel-full-pc-T16-gn-e20@16-vs-s11@32-300k"
+a = "/mnt/D/sugiyama/011/rescaled/011-f-pc-T16-gn-e20"
+a_fv = 16
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 64
+note = "M4 選択 (pc, e20, FV_SCALE 16 = 32 相当, 出力側 1/2)"
+
+[[job]]
+name = "sel-full-pc-T16-gn-e20@20-vs-s11@32-300k"
+a = "/mnt/D/sugiyama/011/rescaled/011-f-pc-T16-gn-e20"
+a_fv = 20
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 64
+note = "M4 選択 (pc, e20, FV_SCALE 20 = 40 相当, 出力側 1/2)"
+
+[[job]]
+name = "sel-full-pc-T16-gn-e20@24-vs-s11@32-300k"
+a = "/mnt/D/sugiyama/011/rescaled/011-f-pc-T16-gn-e20"
+a_fv = 24
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 64
+note = "M4 選択 (pc, e20, FV_SCALE 24 = 48 相当, 出力側 1/2)"
+
+[[job]]
+name = "sel-full-pc-T16-gn-e20@28-vs-s11@32-300k"
+a = "/mnt/D/sugiyama/011/rescaled/011-f-pc-T16-gn-e20"
+a_fv = 28
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 400
+priority = 64
+note = "M4 選択 (pc, e20, FV_SCALE 28 = 56 相当, 出力側 1/2)"
+
+
+# M4 (select_queue.py が自動で追加)
+[[job]]
+name = "final-full-pc-T16-gn-e12@20-vs-s11@32-300k-2000p"
+a = "/mnt/D/sugiyama/011/rescaled/011-f-pc-T16-gn-e12"
+a_fv = 20
+b = "suisho11"
+b_fv = 32
+nodes = 300000
+pairs = 2000
+priority = 70
+note = "M4 最終 (pc の最良, 2,000 ペア), FV_SCALE 20 = 40 相当"
+
