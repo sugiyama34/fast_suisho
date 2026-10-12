@@ -65,9 +65,10 @@ bash scripts/install-hooks.sh   # git の pre-commit hook を有効化
 - **CUDA toolkit の版**: `nvidia-smi` 右上の「CUDA Version」(ドライバが対応する上限) 以下の
   toolkit を使う。`nvcc` は PATH に無いことが多いので `/usr/local/cuda/bin` を足す
   (kajiki では toolkit 13.1 / driver 590.48 で問題なし)
-- **WandB**: API キーは `wandb login` ではなく環境変数で渡す運用 (`~/.netrc` への平文保存を
-  避けるため)。詳細は `docs/wandb-guide.md`。**キーはリポジトリにも `~/.claude/settings.json`
-  にも書かない** (2026-09-28 ユーザー方針)。Claude Code を起動するシェルでだけ export する。
+- **WandB**: **2026-10-06 からはユーザーが `uv run wandb login` を実行し、キーを `~/.netrc` (権限 600) に置く運用**
+  (ユーザー決定: 環境変数には置かない)。experiment-011 の supervisor は `~/.netrc` の資格情報を検出して online で記録する。
+  エージェントは `wandb login` を実行しない。**キーはリポジトリにも `~/.claude/settings.json` にも書かない**。
+  詳細と run の命名規約は `docs/wandb-guide.md` §3。以下は 2026-09-28〜10-05 の旧運用 (環境変数で渡す) の記録。
   先頭に半角スペースを付けると bash の履歴に残らない (Ubuntu 既定の `HISTCONTROL=ignoreboth`):
 
 ```sh
@@ -254,7 +255,7 @@ grep -a 'progress\]' experiments/009-data-scaling/logs/009-p10-bench-g0.log \
 
 `docs/PLAN.md` の「環境メモ」は旧開発機のスペック。移行したサーバーの値はここに追記する。
 
-### kajiki (2026-09-28 に一時使用。学習には不向きと判断)
+### kajiki (2026-09-28 に一時使用。2026-10-06 から experiment-011 で使用)
 
 | 項目 | 値 |
 | --- | --- |
@@ -263,5 +264,6 @@ grep -a 'progress\]' experiments/009-data-scaling/logs/009-p10-bench-g0.log \
 | GPU | RTX PRO 6000 Blackwell Max-Q (96 GB) を MIG 1g.24gb ×4 に分割。**使ってよいのは MIG device 2 / 3 のみ** (0 / 1 は他ユーザー)。起動時は `CUDA_VISIBLE_DEVICES=<MIG の UUID>` |
 | ディスク | `/` SATA SSD 1.8 TB (空き約 230 GB), `/mnt/D` HDD 20 TB (空き 15 TB, 実測 275 MB/s) |
 | 学習速度 | MIG スライスあたり約 0.65M 局面/秒で GPU 律速 (1 スライスに 2 run 載せても合計は増えない)。864 億局面の 1 run に約 37 時間 |
+| スタック上限 | **シェルの `ulimit -s` が unlimited**。この状態でやねうら王を起動すると探索スレッドのスタックが小さくなり (glibc の既定値)、深い再帰で SIGSEGV になる局面がある (2026-10-06, experiment-011 で再現: 300k ノードの対局でエンジンが毎回同じ手で落ちる)。**対局は `ulimit -s 8192` を付けて起動する** (8 MB で解消を確認) |
 
-詳細な計測は `experiments/009-data-scaling/hypothesis.md` §7。
+詳細な計測は `experiments/009-data-scaling/hypothesis.md` §7。2026-10-06 から experiment-011 で再び使用 (`experiments/011-pcalm/`)。

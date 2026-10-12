@@ -1,0 +1,8 @@
+{
+ "reference": "/home/sugiyama/fast_suisho/experiments/009-data-scaling/games/final-full-e16@48-vs-s11@32-300k-2000p",
+ "engine": "/home/sugiyama/engines/009-finny-avx2/YaneuraOu-by-gcc",
+ "games": 100,
+ "same_moves": 100,
+ "same_score": 100,
+ "pairs": 50
+}

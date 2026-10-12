@@ -101,6 +101,7 @@ def init_run(
     tags: list[str] | None = None,
     smoke: bool = False,
     log_dir: Path | None = None,
+    name: str | None = None,
 ) -> Iterator[RunHandle]:
     """実験 run を開始する。
 
@@ -110,6 +111,8 @@ def init_run(
         job_type: "train" / "eval" / "bench" など。
         smoke: True なら動作確認モード (mode="disabled"、クラウドに一切送らない)。
         log_dir: ローカル JSONL の出力先。省略時は experiments/<experiment>/。
+        name: W&B の run 名 (人が読む名前, 一意でなくてよい)。省略時は ``<experiment>-<日時>-<乱数>``。
+            ローカル JSONL のファイル名は常に後者 (一意)。命名規約は docs/wandb-guide.md §3.1
     """
     # 未インストール環境でも tools パッケージ自体は壊さないよう遅延 import
     import wandb
@@ -127,7 +130,7 @@ def init_run(
     run = wandb.init(
         entity=os.environ.get("WANDB_ENTITY", DEFAULT_ENTITY),
         project=os.environ.get("WANDB_PROJECT", DEFAULT_PROJECT),
-        name=run_name,
+        name=name or run_name,
         job_type=job_type,
         tags=[experiment, *(tags or [])],
         config=config,
